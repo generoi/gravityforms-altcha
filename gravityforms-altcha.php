@@ -8,7 +8,7 @@ use Genero\GravityFormsAltcha\Plugin;
  * Description:       Invisible ALTCHA spam protection for Gravity Forms — uses the MIT-licensed altcha-org/altcha PHP library and the ALTCHA widget web component to proof-of-work-verify every form submission with no user interaction.
  * Version:           0.1.0
  * Requires at least: 6.0
- * Requires PHP:      8.1
+ * Requires PHP:      8.2
  * Author:            Genero
  * Author URI:        https://genero.fi
  * License:           MIT

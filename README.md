@@ -12,7 +12,7 @@ a signed PBKDF2 proof that the browser quietly solved in the background.
 ## Requirements
 
 * WordPress 6.0+
-* PHP 8.1+
+* PHP 8.2+
 * Gravity Forms 2.5+
 
 ## Installation
