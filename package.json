@@ -1,0 +1,16 @@
+{
+    "name": "gravityforms-altcha",
+    "private": true,
+    "description": "Builds the ALTCHA widget bundle shipped with the plugin.",
+    "scripts": {
+        "build": "wp-scripts build",
+        "build:production": "wp-scripts build --mode=production",
+        "start": "wp-scripts start"
+    },
+    "dependencies": {
+        "altcha": "^2.0.0"
+    },
+    "devDependencies": {
+        "@wordpress/scripts": "~31.6.0"
+    }
+}
