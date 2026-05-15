@@ -42,7 +42,7 @@ jobs:
       - run: composer test
 
   build:
-    name: Build (Node ${{ env.NODE_VERSION }})
+    name: Build widget bundle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
