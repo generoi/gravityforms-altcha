@@ -8,7 +8,7 @@
         "start": "wp-scripts start"
     },
     "dependencies": {
-        "altcha": "^2.0.0"
+        "altcha": "^3.0.0"
     },
     "devDependencies": {
         "@wordpress/scripts": "~31.6.0"

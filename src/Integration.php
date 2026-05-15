@@ -17,12 +17,13 @@ class Integration
     }
 
     /**
-     * Renders the ALTCHA web component right above the submit button. `auto=onload`
-     * starts the proof-of-work the moment the form is rendered so it's almost
-     * always done by the time a human finishes typing. `hidefooter` removes the
-     * "Protected by ALTCHA" badge and `style=display:none` hides the widget
-     * frame — the only sign of its existence is the hidden `altcha` input the
-     * widget injects, which Gravity Forms posts back like any other field.
+     * Renders the ALTCHA web component right above the submit button.
+     * `auto=onload` kicks off the proof-of-work the moment the form is rendered
+     * so it's almost always done by the time a human finishes typing.
+     * `display=invisible` (widget v3) renders zero UI — only a hidden `altcha`
+     * input remains in the DOM, which Gravity Forms posts back like any other
+     * field. `hidefooter` is a defensive belt-and-braces in case the widget
+     * ever falls back to a visible mode.
      *
      * @param  array<string, mixed>  $form
      */
@@ -34,7 +35,7 @@ class Integration
 
         $endpoint = esc_url(ChallengeEndpoint::url());
         $widget = sprintf(
-            '<div class="gravityforms-altcha" aria-hidden="true" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"><altcha-widget challengeurl="%s" auto="onload" hidefooter></altcha-widget></div>',
+            '<altcha-widget challenge="%s" auto="onload" display="invisible" hidefooter></altcha-widget>',
             $endpoint
         );
 
