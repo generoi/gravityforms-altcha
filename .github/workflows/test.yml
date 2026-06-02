@@ -41,6 +41,37 @@ jobs:
 
       - run: composer test
 
+  integration:
+    name: Integration (wp-env)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - run: composer install --no-interaction --prefer-dist
+
+      # Gravity Forms is commercial and unavailable in CI, so mount only this
+      # plugin. Its GF-dependent tests skip; the suite still smoke-tests that the
+      # plugin loads and boots inside a real WordPress.
+      - name: Configure wp-env for CI
+        run: cp .wp-env.override.json.ci .wp-env.override.json
+
+      - name: Start wp-env
+        run: npx @wordpress/env start
+
+      - name: Run integration tests
+        run: >-
+          npx @wordpress/env run tests-cli
+          --env-cwd=wp-content/plugins/gravityforms-altcha
+          vendor/bin/phpunit -c phpunit.integration.xml.dist
+
   build:
     name: Build widget bundle
     runs-on: ubuntu-latest

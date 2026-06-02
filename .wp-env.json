@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/wp-env.json",
+  "phpVersion": "8.2",
+  "plugins": [
+    ".",
+    "../gravityforms"
+  ],
+  "config": {
+    "WP_TESTS_DOMAIN": "localhost",
+    "WP_TESTS_EMAIL": "test@genero.fi",
+    "WP_TESTS_TITLE": "ALTCHA for Gravity Forms Tests",
+    "WP_PHP_BINARY": "php"
+  }
+}
