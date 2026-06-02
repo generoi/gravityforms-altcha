@@ -94,8 +94,34 @@ class Settings extends \GFAddOn
                         'name' => 'enable_email_validation',
                         'type' => 'toggle',
                         'label' => esc_html__('Email validation', 'gravityforms-altcha'),
-                        'tooltip' => esc_html__('Asks the visitor to correct an undeliverable or disposable email address before submitting. Verifies via Bouncer — requires the BOUNCER_API_KEY environment variable, and sends the email to a third-party service. Fails open (never blocks) if the service is unavailable. Applies to all Gravity Forms.', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Asks the visitor to correct a bad email address before submitting. Verifies via Bouncer — requires the BOUNCER_API_KEY environment variable, and sends the email to a third-party service. Fails open (never blocks) if the service is unavailable. Applies to all Gravity Forms.', 'gravityforms-altcha'),
                         'default_value' => false,
+                    ],
+                    [
+                        'name' => 'email_block',
+                        'type' => 'checkbox',
+                        'label' => esc_html__('Reject addresses that are', 'gravityforms-altcha'),
+                        'dependency' => [
+                            'live' => true,
+                            'fields' => [['field' => 'enable_email_validation']],
+                        ],
+                        'choices' => [
+                            [
+                                'name' => 'email_block_undeliverable',
+                                'label' => esc_html__('Undeliverable — the mailbox or domain does not exist', 'gravityforms-altcha'),
+                                'default_value' => true,
+                            ],
+                            [
+                                'name' => 'email_block_risky',
+                                'label' => esc_html__('Risky — catch-all, role, or low-quality (may reject some real addresses)', 'gravityforms-altcha'),
+                                'default_value' => false,
+                            ],
+                            [
+                                'name' => 'email_block_disposable',
+                                'label' => esc_html__('Disposable — a temporary, throwaway inbox', 'gravityforms-altcha'),
+                                'default_value' => true,
+                            ],
+                        ],
                     ],
                 ],
             ],
@@ -192,6 +218,23 @@ class Settings extends \GFAddOn
     public static function emailValidationEnabled(): bool
     {
         return (bool) self::get_instance()->get_plugin_setting('enable_email_validation');
+    }
+
+    /**
+     * Which Bouncer verdicts the admin has opted to reject. Unchecked / unset →
+     * false, so a verdict is only ever acted on when explicitly enabled.
+     *
+     * @return array{undeliverable: bool, risky: bool, disposable: bool}
+     */
+    public static function emailBlockModes(): array
+    {
+        $addon = self::get_instance();
+
+        return [
+            'undeliverable' => (bool) $addon->get_plugin_setting('email_block_undeliverable'),
+            'risky' => (bool) $addon->get_plugin_setting('email_block_risky'),
+            'disposable' => (bool) $addon->get_plugin_setting('email_block_disposable'),
+        ];
     }
 
     /**

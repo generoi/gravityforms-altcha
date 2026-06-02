@@ -78,12 +78,14 @@ itself is enabled.
   definite-spam keyword, or accumulates enough weaker signals (link farms,
   injected markup, wrong-script text).
 * **Email validation** — unlike the two above, this *blocks* the field (with a
-  corrective message) when the email is undeliverable or disposable, so the
-  visitor fixes a bad address rather than silently never hearing back. Verifies
-  via [Bouncer](https://usebouncer.com); requires the `BOUNCER_API_KEY`
-  environment variable. **Fails open** — risky/unknown verdicts, a missing key,
-  or an API error never block. Note: this sends the submitted email to a
-  third-party service, so cover it in your privacy policy / DPA.
+  corrective message) so the visitor fixes a bad address rather than silently
+  never hearing back. Per-verdict checkboxes decide what to reject —
+  **undeliverable** (default on), **risky** (default off — may catch some real
+  catch-all/role addresses), and **disposable** (default on). Verifies via
+  [Bouncer](https://usebouncer.com); requires the `BOUNCER_API_KEY` environment
+  variable. **Fails open** — `unknown`, a missing key, or an API error never
+  block. Note: this sends the submitted email to a third-party service, so
+  cover it in your privacy policy / DPA.
 
 ## How it works
 

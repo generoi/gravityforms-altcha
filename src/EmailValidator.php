@@ -5,15 +5,16 @@ namespace Genero\GravityFormsAltcha;
 /**
  * Optional real-time email validation for Gravity Forms email fields, via the
  * Bouncer API (https://usebouncer.com). When enabled, submissions whose email
- * is undeliverable or disposable are rejected at the field with a corrective
- * message — unlike the spam layers, this *blocks* because the right outcome is
- * to help the visitor fix a bad address (otherwise you could never reply).
+ * matches one of the admin-selected verdicts are rejected at the field with a
+ * corrective message — unlike the spam layers, this *blocks* because the right
+ * outcome is to help the visitor fix a bad address (otherwise you could never
+ * reply).
  *
  * Safety:
- *  - Off by default; controlled by a global toggle in {@see Settings}.
- *  - Fails open — any uncertainty (risky/unknown), a missing API key, or an API
- *    error never blocks the submission. Only a definitive "undeliverable" or
- *    "disposable" verdict does.
+ *  - Off by default; controlled by a global toggle in {@see Settings}, with
+ *    per-verdict checkboxes (undeliverable / risky / disposable).
+ *  - Fails open — `unknown`, a missing API key, or an API error never blocks,
+ *    and only the verdicts you tick are acted on.
  *  - Caches definitive verdicts for a day, keyed by a hash of the email.
  *
  * Privacy: enabling this sends the submitted email address to Bouncer, a
@@ -68,7 +69,7 @@ class EmailValidator
             return $result;
         }
 
-        if (! self::validate($email)['block']) {
+        if (! self::shouldBlock(self::validate($email), Settings::emailBlockModes())) {
             return $result;
         }
 
@@ -86,7 +87,7 @@ class EmailValidator
     }
 
     /**
-     * @return array{status: string, disposable: bool, role: bool, reason: ?string, block: bool}
+     * @return array{status: string, disposable: bool, role: bool, reason: ?string}
      */
     public static function validate(string $email): array
     {
@@ -129,15 +130,40 @@ class EmailValidator
     }
 
     /**
-     * Normalised verdict. Only a definitive undeliverable/disposable blocks.
+     * Normalised verdict (no block decision — that depends on the admin-selected
+     * modes; see {@see self::shouldBlock()}).
      *
-     * @return array{status: string, disposable: bool, role: bool, reason: ?string, block: bool}
+     * @return array{status: string, disposable: bool, role: bool, reason: ?string}
      */
     public static function result(string $status, bool $disposable = false, bool $role = false, ?string $reason = null): array
     {
-        $block = $disposable || $status === 'undeliverable';
+        return compact('status', 'disposable', 'role', 'reason');
+    }
 
-        return compact('status', 'disposable', 'role', 'reason', 'block');
+    /**
+     * Whether a verdict should block, given which modes the admin enabled. Any
+     * uncertainty (deliverable, unknown, or a mode left off) lets it through.
+     *
+     * @param  array{status?: string, disposable?: bool}  $verdict
+     * @param  array{undeliverable?: bool, risky?: bool, disposable?: bool}  $modes
+     */
+    public static function shouldBlock(array $verdict, array $modes): bool
+    {
+        $status = $verdict['status'] ?? 'unknown';
+
+        if (! empty($modes['undeliverable']) && $status === 'undeliverable') {
+            return true;
+        }
+
+        if (! empty($modes['risky']) && $status === 'risky') {
+            return true;
+        }
+
+        if (! empty($modes['disposable']) && ! empty($verdict['disposable'])) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -145,7 +171,7 @@ class EmailValidator
      *
      * @see https://docs.usebouncer.com/api-reference/real-time/verify-email
      *
-     * @return array{status: string, disposable: bool, role: bool, reason: ?string, block: bool}
+     * @return array{status: string, disposable: bool, role: bool, reason: ?string}
      */
     private static function bouncer(string $email): array
     {
