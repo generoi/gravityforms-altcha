@@ -97,12 +97,17 @@ class Integration
     private function shouldProtect(array $form): bool
     {
         /**
-         * Filters whether ALTCHA should protect this form. Default `true` — the
-         * plugin is opt-out, since the whole point is silent universal coverage.
-         * Sites that want per-form scoping can flip the default to `false` and
-         * enable on specific form IDs via this filter.
+         * Filters whether ALTCHA should protect this form. The default is
+         * derived from the add-on settings — opt-in via the global "Enable for
+         * all forms" toggle or the per-form toggle (see {@see Settings}). Pass
+         * a hard-coded boolean here to override the saved settings, e.g. to
+         * force protection on a specific form ID regardless of its toggle.
          */
-        return (bool) apply_filters('genero/gravityforms_altcha/should_protect', true, $form);
+        return (bool) apply_filters(
+            'genero/gravityforms_altcha/should_protect',
+            Settings::isEnabledForForm($form),
+            $form,
+        );
     }
 
     private function challenge(): Challenge

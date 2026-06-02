@@ -7,7 +7,7 @@ a signed PBKDF2 proof that the browser quietly solved in the background.
 * MIT-licensed end to end ([altcha-org/altcha](https://github.com/altcha-org/altcha-lib-php) for PHP, [altcha](https://www.npmjs.com/package/altcha) widget for JS, this plugin for the glue).
 * No external API calls — challenges are issued and verified by your own WordPress install.
 * No license keys, no quotas.
-* Drop-in: enables itself automatically for every Gravity Form.
+* Opt-in: enable globally for all forms, or per individual form.
 
 ## Requirements
 
@@ -34,10 +34,25 @@ wp plugin activate gravityforms-altcha
 2. Upload to `wp-content/plugins/` (or via Plugins → Add New → Upload).
 3. Activate.
 
+## Settings
+
+ALTCHA is **off by default**. Enable it one of two ways:
+
+* **Globally** — Forms → Settings → **ALTCHA** → toggle *Enable for all forms*.
+  Every Gravity Form is then protected.
+* **Per form** — a form's Settings → **ALTCHA** tab → toggle *Enable ALTCHA for
+  this form*. Use this when you only want protection on selected forms.
+
+A form is protected when the global toggle is on **or** that form's own toggle
+is on. Both are stored in the standard Gravity Forms settings (the global one as
+the `gravityformsaddon_gravityforms-altcha_settings` option, the per-form one in
+the form meta). The `genero/gravityforms_altcha/should_protect` filter can still
+override the saved settings programmatically.
+
 ## How it works
 
-1. **Form render** — the plugin injects a hidden `<altcha-widget>` web component
-   above the submit button on every Gravity Form.
+1. **Form render** — when enabled for the form, the plugin injects a hidden
+   `<altcha-widget>` web component above the submit button.
 2. **Browser-side proof-of-work** — the widget fetches a fresh challenge from
    `/wp-json/genero/gravityforms-altcha/v1/challenge` (signed with a per-site
    HMAC secret) and brute-forces a PBKDF2/SHA-256 derived-key match.
@@ -47,20 +62,21 @@ wp plugin activate gravityforms-altcha
    reconstructs the challenge, and runs `altcha-org/altcha::verifySolution()`.
    On failure the submission is rejected with a generic error message.
 
-There is no admin UI, no per-form configuration, and no settings page —
-everything customisable lives behind WordPress filters.
+Day-to-day configuration lives in the admin UI (see [Settings](#settings)); the
+filters below cover advanced overrides.
 
 ## Filters
 
 ### `genero/gravityforms_altcha/should_protect`
 
-Skip protection on specific forms:
+Override the saved settings — force protection on (or off) for specific forms
+regardless of the global / per-form toggles:
 
 ```php
 add_filter('genero/gravityforms_altcha/should_protect', function (bool $protect, array $form): bool {
-    // Don't run ALTCHA on internal preview-only forms.
-    if (in_array((int) $form['id'], [42, 43], true)) {
-        return false;
+    // Always protect the high-value lead form, whatever the toggles say.
+    if ((int) $form['id'] === 7) {
+        return true;
     }
     return $protect;
 }, 10, 2);
