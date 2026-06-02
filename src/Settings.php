@@ -80,7 +80,7 @@ class Settings extends \GFAddOn
                         'name' => 'enable_rate_limit',
                         'type' => 'toggle',
                         'label' => esc_html__('Rate limiting', 'gravityforms-altcha'),
-                        'tooltip' => esc_html__('Flags submissions as spam (recoverable — never blocked) once an IP submits the same form more than a couple of times a minute. Applies to all Gravity Forms.', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Flags submissions as spam (recoverable — never blocked) once an IP submits the same form more than a few times an hour. Applies to all Gravity Forms.', 'gravityforms-altcha'),
                         'default_value' => false,
                     ],
                     [

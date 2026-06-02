@@ -55,12 +55,13 @@ class SpamFilter
     }
 
     /**
-     * Per-IP, per-form sliding-ish counter. Allows up to the limit per minute
-     * and flags anything beyond it. An unresolvable IP is never penalised.
+     * Per-IP, per-form sliding-ish counter. Allows up to the limit within the
+     * window and flags anything beyond it. An unresolvable IP is never
+     * penalised.
      *
      * The IP is resolved independently of Gravity Forms (sites commonly blank
      * GF's stored IP for GDPR), and is only ever kept as a salted HMAC in a
-     * 60-second transient — the raw IP is never stored or logged.
+     * short-lived transient — the raw IP is never stored or logged.
      *
      * @param  array<string, mixed>  $form
      */
@@ -72,15 +73,19 @@ class SpamFilter
         }
 
         /**
-         * Filters the per-IP, per-form submission allowance per minute.
+         * Filters the per-IP, per-form submission allowance and the window it
+         * applies over. Defaults to 3 submissions per hour — generous enough
+         * for a legitimate retry, tight against floods. For "1 per minute"
+         * instead, set max 1 and window MINUTE_IN_SECONDS.
          */
-        $limit = max(1, (int) apply_filters('genero/gravityforms_altcha/rate_limit_per_minute', 2, $form));
+        $max = max(1, (int) apply_filters('genero/gravityforms_altcha/rate_limit_max', 3, $form));
+        $window = max(1, (int) apply_filters('genero/gravityforms_altcha/rate_limit_window', HOUR_IN_SECONDS, $form));
 
         $key = 'gfaltcha_rl_'.($form['id'] ?? 0).'_'.self::hashIp($ip);
         $count = (int) get_transient($key);
-        set_transient($key, $count + 1, MINUTE_IN_SECONDS);
+        set_transient($key, $count + 1, $window);
 
-        return $count >= $limit;
+        return $count >= $max;
     }
 
     private function clientIp(): ?string

@@ -69,7 +69,7 @@ blocked or shown an error, and a false positive stays recoverable in the entry
 itself is enabled.
 
 * **Rate limiting** — flags submissions once an IP exceeds a per-form
-  per-minute allowance (default 2). The IP is resolved independently of Gravity
+  allowance within a window (default 3 per hour). The IP is resolved independently of Gravity
   Forms (sites often blank GF's stored IP for GDPR) and kept only as a salted
   HMAC in a 60-second transient — the raw IP is never stored or logged. Behind
   a CDN/proxy, point it at the right client-IP header (see
@@ -161,13 +161,14 @@ add_filter('genero/gravityforms_altcha/client_ip_headers', fn () => [
 Common headers: `HTTP_CF_CONNECTING_IP` (Cloudflare), `HTTP_FASTLY_CLIENT_IP`
 (Fastly), `HTTP_TRUE_CLIENT_IP` (Akamai), `HTTP_X_REAL_IP` (nginx).
 
-### `genero/gravityforms_altcha/rate_limit_per_minute`
+### `genero/gravityforms_altcha/rate_limit_max` and `…/rate_limit_window`
 
-Per-IP, per-form submission allowance before a submission is flagged as spam
-(default 2):
+Per-IP, per-form submission allowance and the window (seconds) it applies over
+before a submission is flagged as spam. Default: 3 per hour. For "1 per minute":
 
 ```php
-add_filter('genero/gravityforms_altcha/rate_limit_per_minute', fn (int $limit, array $form) => 5, 10, 2);
+add_filter('genero/gravityforms_altcha/rate_limit_max', fn () => 1);
+add_filter('genero/gravityforms_altcha/rate_limit_window', fn () => MINUTE_IN_SECONDS);
 ```
 
 ### `genero/gravityforms_altcha/spam_keywords` and `…/spam_score_threshold`
