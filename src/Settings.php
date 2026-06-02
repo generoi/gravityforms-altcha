@@ -90,6 +90,13 @@ class Settings extends \GFAddOn
                         'tooltip' => esc_html__('Flags submissions as spam (recoverable — never blocked) when the message contains definite-spam keywords or several spam signals. Applies to all Gravity Forms.', 'gravityforms-altcha'),
                         'default_value' => false,
                     ],
+                    [
+                        'name' => 'enable_email_validation',
+                        'type' => 'toggle',
+                        'label' => esc_html__('Email validation', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Asks the visitor to correct an undeliverable or disposable email address before submitting. Verifies via Bouncer — requires the BOUNCER_API_KEY environment variable, and sends the email to a third-party service. Fails open (never blocks) if the service is unavailable. Applies to all Gravity Forms.', 'gravityforms-altcha'),
+                        'default_value' => false,
+                    ],
                 ],
             ],
         ];
@@ -180,6 +187,11 @@ class Settings extends \GFAddOn
     public static function contentFilterEnabled(): bool
     {
         return (bool) self::get_instance()->get_plugin_setting('enable_content_filter');
+    }
+
+    public static function emailValidationEnabled(): bool
+    {
+        return (bool) self::get_instance()->get_plugin_setting('enable_email_validation');
     }
 
     /**

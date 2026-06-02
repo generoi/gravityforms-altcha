@@ -66,6 +66,7 @@ class Plugin
         Integration::register();
         ChallengeEndpoint::register();
         SpamFilter::register();
+        EmailValidator::register();
     }
 
     /**

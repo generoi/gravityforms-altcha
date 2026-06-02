@@ -77,6 +77,13 @@ itself is enabled.
 * **Content spam filtering** — flags submissions whose text contains a
   definite-spam keyword, or accumulates enough weaker signals (link farms,
   injected markup, wrong-script text).
+* **Email validation** — unlike the two above, this *blocks* the field (with a
+  corrective message) when the email is undeliverable or disposable, so the
+  visitor fixes a bad address rather than silently never hearing back. Verifies
+  via [Bouncer](https://usebouncer.com); requires the `BOUNCER_API_KEY`
+  environment variable. **Fails open** — risky/unknown verdicts, a missing key,
+  or an API error never block. Note: this sends the submitted email to a
+  third-party service, so cover it in your privacy policy / DPA.
 
 ## How it works
 
@@ -179,6 +186,25 @@ score the weaker heuristics must reach (each signal contributes 2; default 3):
 ```php
 add_filter('genero/gravityforms_altcha/spam_keywords', fn (array $words) => [...$words, 'crypto']);
 add_filter('genero/gravityforms_altcha/spam_score_threshold', fn () => 4);
+```
+
+### `genero/gravityforms_altcha/bouncer_api_key`
+
+Provide the Bouncer key in code instead of the `BOUNCER_API_KEY` env var (e.g.
+from a secrets manager):
+
+```php
+add_filter('genero/gravityforms_altcha/bouncer_api_key', fn () => get_option('my_bouncer_key'));
+```
+
+### `genero/gravityforms_altcha/email_should_validate` and `…/email_error_message`
+
+Skip email validation for specific fields/forms, or customise the rejection
+message:
+
+```php
+add_filter('genero/gravityforms_altcha/email_should_validate', fn (bool $v, $field, $form) => (int) $form['id'] !== 12, 10, 3);
+add_filter('genero/gravityforms_altcha/email_error_message', fn () => __('That email looks undeliverable — please check it.', 'your-textdomain'));
 ```
 
 ## Development
