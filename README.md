@@ -75,8 +75,10 @@ itself is enabled.
   a CDN/proxy, point it at the right client-IP header (see
   `genero/gravityforms_altcha/client_ip_headers`).
 * **Content spam filtering** — flags submissions whose text contains a
-  definite-spam keyword, or accumulates enough weaker signals (link farms,
-  injected markup, wrong-script text).
+  definite-spam keyword (matched on word boundaries), or accumulates enough
+  weaker signals (link farms, a URL in the name field, injected markup,
+  wrong-script text). Scans all visitor text including composite name/address
+  fields, and ignores zero-width characters used to evade matching.
 * **Email validation** — unlike the two above, this *blocks* the field (with a
   corrective message) so the visitor fixes a bad address rather than silently
   never hearing back. Per-verdict checkboxes decide what to reject —

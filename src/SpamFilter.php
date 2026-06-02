@@ -46,9 +46,11 @@ class SpamFilter
             return true;
         }
 
-        if (Settings::contentFilterEnabled()
-            && self::contentIsSpam($this->submittedText($form, $entry), self::keywords(), self::scoreThreshold())) {
-            return true;
+        if (Settings::contentFilterEnabled()) {
+            $text = $this->extractText($form, $entry);
+            if (self::contentIsSpam($text['body'], $text['identity'], self::keywords(), self::scoreThreshold())) {
+                return true;
+            }
         }
 
         return (bool) $isSpam;
@@ -142,55 +144,146 @@ class SpamFilter
     }
 
     /**
-     * Concatenates the visitor-entered free-text fields for scoring.
+     * Gathers the visitor-entered free text for scoring. Returns the full body
+     * plus, separately, the identity (name) text — a URL there is a far stronger
+     * signal than one in a message, so the scorer weighs it more.
+     *
+     * Walks composite fields (name/address store values in sub-inputs), which a
+     * naive `rgar($entry, $field->id)` would miss entirely.
      *
      * @param  array<string, mixed>  $form
      * @param  array<string, mixed>  $entry
+     * @return array{body: string, identity: string}
      */
-    private function submittedText(array $form, array $entry): string
+    private function extractText(array $form, array $entry): array
     {
-        $text = '';
+        $bodyTypes = ['text', 'textarea', 'name', 'address', 'website', 'post_title', 'post_content', 'post_excerpt'];
+
+        $body = '';
+        $identity = '';
+
         foreach ($form['fields'] ?? [] as $field) {
-            if (in_array($field->type ?? '', ['text', 'textarea'], true)) {
-                $text .= ' '.rgar($entry, (string) $field->id);
+            $type = $field->type ?? '';
+            $value = $this->fieldValue($field, $entry);
+            if ($value === '') {
+                continue;
+            }
+
+            if (in_array($type, $bodyTypes, true)) {
+                $body .= ' '.$value;
+            }
+
+            if ($type === 'name') {
+                $identity .= ' '.$value;
             }
         }
 
-        return trim($text);
+        return ['body' => trim($body), 'identity' => trim($identity)];
+    }
+
+    /**
+     * Reads a field's submitted value, joining sub-inputs for composite fields
+     * (name, address) so their text is actually seen.
+     *
+     * @param  object  $field
+     * @param  array<string, mixed>  $entry
+     */
+    private function fieldValue($field, array $entry): string
+    {
+        if (! empty($field->inputs) && is_array($field->inputs)) {
+            $parts = [];
+            foreach ($field->inputs as $input) {
+                $parts[] = (string) rgar($entry, (string) ($input['id'] ?? ''));
+            }
+
+            return trim(implode(' ', array_filter($parts)));
+        }
+
+        return (string) rgar($entry, (string) ($field->id ?? ''));
     }
 
     /**
      * Pure spam test (no WordPress/GF dependencies, so it is unit-testable).
      * A definite keyword flags on a single hit; otherwise weaker signals must
      * accumulate to the threshold — so a lone link or foreign word never trips
-     * it.
+     * it, keeping false positives near zero.
      *
+     * @param  string  $body  All visitor free text.
+     * @param  string  $identity  Just the name field(s); a URL here is damning.
      * @param  array<int, string>  $keywords
      */
-    public static function contentIsSpam(string $text, array $keywords, int $threshold): bool
+    public static function contentIsSpam(string $body, string $identity, array $keywords, int $threshold): bool
     {
-        if ($text === '') {
+        $identity = self::normalize($identity);
+        $body = self::normalize($body);
+        $combined = trim($identity.' '.$body);
+
+        if ($combined === '') {
             return false;
         }
 
+        // Definite-spam keywords — matched on word boundaries (unicode-aware) so
+        // a keyword can't trip on a substring of an innocent word.
         foreach ($keywords as $keyword) {
-            if ($keyword !== '' && stripos($text, $keyword) !== false) {
+            if ($keyword !== '' && self::containsWord($combined, $keyword)) {
                 return true;
             }
         }
 
         $score = 0;
-        if (preg_match_all('~https?://~i', $text) >= 3) {
-            $score += 2; // link farm
+
+        // Links (http(s):// and scheme-less www.), graduated: a single link is
+        // innocent, a pile of them is not.
+        $links = self::countLinks($combined);
+        if ($links >= 5) {
+            $score += 3;
+        } elseif ($links >= 3) {
+            $score += 2;
         }
-        if (preg_match('~\[url=|</?a\s~i', $text)) {
+
+        // A URL in the name field is near-certain spam — real names aren't links.
+        if ($identity !== '' && self::countLinks($identity) >= 1) {
+            $score += 3;
+        }
+
+        if (preg_match('~\[url=|</?a\s~i', $combined)) {
             $score += 2; // injected markup
         }
-        if (preg_match('~[\p{Cyrillic}\p{Han}\p{Hangul}]~u', $text)) {
+
+        if (preg_match('~[\p{Cyrillic}\p{Han}\p{Hangul}]~u', $combined)) {
             $score += 2; // wrong script for a FI/SV site
         }
 
         return $score >= $threshold;
+    }
+
+    /**
+     * Strips zero-width / invisible characters used to break keyword and link
+     * matching, and collapses whitespace.
+     */
+    private static function normalize(string $text): string
+    {
+        $text = preg_replace('~[\x{200B}-\x{200D}\x{2060}\x{FEFF}\x{00AD}]~u', '', $text) ?? $text;
+
+        return trim(preg_replace('~\s+~u', ' ', $text) ?? $text);
+    }
+
+    /**
+     * Case-insensitive, unicode-aware whole-word match (avoids the Scunthorpe
+     * problem when a short keyword is configured).
+     */
+    private static function containsWord(string $text, string $word): bool
+    {
+        return (bool) preg_match('~(?<![\p{L}\p{N}])'.preg_quote($word, '~').'(?![\p{L}\p{N}])~iu', $text);
+    }
+
+    /**
+     * Counts distinct URLs — `https?://…` or a scheme-less `www.…` — without
+     * double-counting `http://www.…` as two.
+     */
+    private static function countLinks(string $text): int
+    {
+        return (int) preg_match_all('~https?://\S+|(?<![\w@.])www\.\S+~i', $text);
     }
 
     /**

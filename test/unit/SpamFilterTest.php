@@ -13,9 +13,9 @@ class SpamFilterTest extends TestCase
 
     private const THRESHOLD = 3;
 
-    private function isSpam(string $text): bool
+    private function isSpam(string $body, string $identity = ''): bool
     {
-        return SpamFilter::contentIsSpam($text, self::KEYWORDS, self::THRESHOLD);
+        return SpamFilter::contentIsSpam($body, $identity, self::KEYWORDS, self::THRESHOLD);
     }
 
     public function test_empty_text_is_never_spam(): void
@@ -35,15 +35,36 @@ class SpamFilterTest extends TestCase
         $this->assertTrue($this->isSpam('Welcome to the best CASINO online'));
     }
 
-    public function test_a_single_link_is_allowed(): void
+    public function test_keyword_does_not_match_inside_a_word(): void
+    {
+        // Word-boundary matching: "casino" must not trip on a substring.
+        $this->assertFalse(SpamFilter::contentIsSpam('the cppcasinoxx token', '', ['casino'], self::THRESHOLD));
+        // But a real word boundary (punctuation) still matches.
+        $this->assertTrue(SpamFilter::contentIsSpam('visit the casino.', '', ['casino'], self::THRESHOLD));
+    }
+
+    public function test_keyword_evasion_with_zero_width_chars_still_caught(): void
+    {
+        $this->assertTrue($this->isSpam("vi\u{200B}agra")); // zero-width space inside the word
+    }
+
+    public function test_one_or_two_links_are_allowed(): void
     {
         $this->assertFalse($this->isSpam('See our recipe at https://example.com, looks great!'));
+        $this->assertFalse($this->isSpam('http://a.com and http://b.com'));
     }
 
     public function test_three_links_alone_do_not_flag(): void
     {
-        // One weak signal (score 2) stays below the threshold — err toward real users.
-        $this->assertFalse($this->isSpam('http://a.com and http://b.com and http://c.com'));
+        // Score 2 stays below the threshold — needs a second signal.
+        $this->assertFalse($this->isSpam('http://a.com http://b.com http://c.com'));
+    }
+
+    public function test_many_links_alone_flag(): void
+    {
+        $this->assertTrue($this->isSpam('http://a.com http://b.com http://c.com http://d.com http://e.com'));
+        // Scheme-less www. links are counted too.
+        $this->assertTrue($this->isSpam('www.a.com www.b.com www.c.com www.d.com www.e.com'));
     }
 
     public function test_a_lone_foreign_word_is_allowed(): void
@@ -53,10 +74,16 @@ class SpamFilterTest extends TestCase
 
     public function test_two_combined_signals_flag(): void
     {
-        // Link farm (2) + injected anchor markup (2) = 4 >= 3.
-        $this->assertTrue($this->isSpam('http://a.com http://b.com http://c.com <a href="http://x.com">x</a>'));
-        // Wrong-script text (2) + link farm (2) = 4 >= 3.
+        // Wrong-script text (2) + link farm of 3 (2) = 4 >= 3.
         $this->assertTrue($this->isSpam('Спасибо http://a.com http://b.com http://c.com'));
+    }
+
+    public function test_url_in_name_field_flags(): void
+    {
+        // A link in the identity (name) field alone is enough.
+        $this->assertTrue($this->isSpam('Hello, nice site', 'http://spam.example'));
+        // …while a clean name with an ordinary message does not.
+        $this->assertFalse($this->isSpam('Hello, nice site', 'Matti Meikäläinen'));
     }
 
     public function test_keywords_are_case_insensitive(): void
