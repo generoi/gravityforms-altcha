@@ -217,8 +217,29 @@ add_filter('genero/gravityforms_altcha/email_error_message', fn () => __('That e
 composer install
 npm install
 npm run build       # outputs build/widget.js
-composer test       # PHPUnit suite, no WordPress dependency
 composer lint:fix   # Pint
+```
+
+## Tests
+
+Two layers:
+
+* **`composer test`** — the `unit` (pure logic) and `mocked` (WP functions stubbed
+  with Brain\Monkey) suites. No WordPress, no database — runs in CI on PHP
+  8.2–8.4.
+* **`composer test:integration`** — real-WordPress integration tests
+  (`wp-phpunit`) covering the settings, the `gform_entry_is_spam` spam layers,
+  and cost resolution against an actual Gravity Forms install. Gravity Forms is
+  commercial, so these **skip when it isn't present** (e.g. CI) and run for real
+  via wp-env or DDEV.
+
+Run the integration suite with [`wp-env`](https://www.npmjs.com/package/@wordpress/env)
+(place a `gravityforms` checkout alongside this repo so it mounts):
+
+```bash
+npx @wordpress/env start
+npx @wordpress/env run tests-cli --env-cwd=wp-content/plugins/gravityforms-altcha \
+  vendor/bin/phpunit -c phpunit.integration.xml.dist
 ```
 
 ## License

@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         bootstrap="vendor/autoload.php"
-         colors="true">
+         bootstrap="test/bootstrap.php"
+         colors="true"
+         beStrictAboutTestsThatDoNotTestAnything="true">
     <testsuites>
+        <!-- Pure logic — no WordPress. -->
         <testsuite name="unit">
-            <directory>test/unit</directory>
+            <directory suffix="Test.php">test/unit</directory>
+        </testsuite>
+        <!-- WP-glue logic with WordPress functions stubbed via Brain\Monkey. -->
+        <testsuite name="mocked">
+            <directory suffix="Test.php">test/mocked</directory>
         </testsuite>
     </testsuites>
 </phpunit>
