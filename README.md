@@ -49,6 +49,35 @@ the `gravityformsaddon_gravityforms-altcha_settings` option, the per-form one in
 the form meta). The `genero/gravityforms_altcha/should_protect` filter can still
 override the saved settings programmatically.
 
+### Protection strength
+
+Forms → Settings → **ALTCHA** has a *Protection strength* dropdown (Low /
+Standard / High / Very high) controlling how hard the background proof-of-work
+is — stronger costs bots more per submission but takes longer to solve on
+low-end devices. Because the widget solves on page load while the form is being
+filled, even the higher settings are normally invisible. Each form's ALTCHA tab
+can override the site-wide strength or inherit it. For an exact custom value,
+use the `genero/gravityforms_altcha/cost` filter.
+
+### Extra spam layers (optional)
+
+Two independent, fully first-party layers can be toggled on under Forms →
+Settings → **ALTCHA**. Both **mark suspicious submissions as spam** (via
+`gform_entry_is_spam`) rather than rejecting them — a real visitor is never
+blocked or shown an error, and a false positive stays recoverable in the entry
+*Spam* view. They apply to every Gravity Form, independent of whether ALTCHA
+itself is enabled.
+
+* **Rate limiting** — flags submissions once an IP exceeds a per-form
+  per-minute allowance (default 2). The IP is resolved independently of Gravity
+  Forms (sites often blank GF's stored IP for GDPR) and kept only as a salted
+  HMAC in a 60-second transient — the raw IP is never stored or logged. Behind
+  a CDN/proxy, point it at the right client-IP header (see
+  `genero/gravityforms_altcha/client_ip_headers`).
+* **Content spam filtering** — flags submissions whose text contains a
+  definite-spam keyword, or accumulates enough weaker signals (link farms,
+  injected markup, wrong-script text).
+
 ## How it works
 
 1. **Form render** — when enabled for the form, the plugin injects a hidden
@@ -61,6 +90,10 @@ override the saved settings programmatically.
 4. **Server-side verification** — `gform_validation` decodes the payload,
    reconstructs the challenge, and runs `altcha-org/altcha::verifySolution()`.
    On failure the submission is rejected with a generic error message.
+5. **Replay protection** — each challenge is single-use. A solved payload's
+   unique signature is remembered for the rest of its lifetime, so the same
+   proof can't be replayed across many submissions — a bot must solve a fresh
+   challenge every time rather than paying the cost once.
 
 Day-to-day configuration lives in the admin UI (see [Settings](#settings)); the
 filters below cover advanced overrides.
@@ -100,6 +133,51 @@ Localise or rewrite the validation error:
 
 ```php
 add_filter('genero/gravityforms_altcha/error_message', fn () => __('Spam check failed. Please reload and try again.', 'your-textdomain'));
+```
+
+### `genero/gravityforms_altcha/cost`
+
+Set an exact proof-of-work cost (PBKDF2 iterations), overriding the
+*Protection strength* dropdown. Receives the form id for context:
+
+```php
+add_filter('genero/gravityforms_altcha/cost', fn (int $cost, ?int $formId) => 750000, 10, 2);
+```
+
+### `genero/gravityforms_altcha/client_ip_headers`
+
+Only relevant when *Rate limiting* is on. Ordered list of `$_SERVER` keys to
+read the client IP from; defaults to `['REMOTE_ADDR']`. Behind a CDN, **prepend
+the single header your CDN sets** — never trust a forwarded header it doesn't,
+as it can be spoofed to evade the limit or push a real visitor over it.
+
+```php
+add_filter('genero/gravityforms_altcha/client_ip_headers', fn () => [
+    'HTTP_CF_CONNECTING_IP', // Cloudflare
+    'REMOTE_ADDR',
+]);
+```
+
+Common headers: `HTTP_CF_CONNECTING_IP` (Cloudflare), `HTTP_FASTLY_CLIENT_IP`
+(Fastly), `HTTP_TRUE_CLIENT_IP` (Akamai), `HTTP_X_REAL_IP` (nginx).
+
+### `genero/gravityforms_altcha/rate_limit_per_minute`
+
+Per-IP, per-form submission allowance before a submission is flagged as spam
+(default 2):
+
+```php
+add_filter('genero/gravityforms_altcha/rate_limit_per_minute', fn (int $limit, array $form) => 5, 10, 2);
+```
+
+### `genero/gravityforms_altcha/spam_keywords` and `…/spam_score_threshold`
+
+Tune the content filter — definite-spam keywords (a single match flags) and the
+score the weaker heuristics must reach (each signal contributes 2; default 3):
+
+```php
+add_filter('genero/gravityforms_altcha/spam_keywords', fn (array $words) => [...$words, 'crypto']);
+add_filter('genero/gravityforms_altcha/spam_score_threshold', fn () => 4);
 ```
 
 ## Development

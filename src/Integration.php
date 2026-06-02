@@ -33,7 +33,8 @@ class Integration
             return $buttonInput;
         }
 
-        $endpoint = esc_url(ChallengeEndpoint::url());
+        $formId = isset($form['id']) ? (int) $form['id'] : null;
+        $endpoint = esc_url(ChallengeEndpoint::url($formId ?: null));
         $widget = sprintf(
             '<altcha-widget challenge="%s" auto="onload" display="invisible" hidefooter></altcha-widget>',
             $endpoint
@@ -62,7 +63,7 @@ class Integration
             ? sanitize_text_field(wp_unslash($_POST[self::POST_FIELD]))
             : '';
 
-        if ($this->challenge()->verify($payload)) {
+        if ($this->challenge()->verify($payload) && ! $this->isReplay($payload)) {
             return $result;
         }
 
@@ -71,6 +72,45 @@ class Integration
         $result['form']['failed_validation_page'] = $result['form']['page_count'] ?? 1;
 
         return $result;
+    }
+
+    /**
+     * One-time-use enforcement. A signed challenge stays verifiable until it
+     * expires, so without this a bot could solve the proof once and replay the
+     * same payload across many submissions, paying the proof-of-work cost only
+     * once. We remember each challenge's unique signature for the rest of its
+     * lifetime and reject any payload we've already accepted.
+     *
+     * Only called after a successful verify(), so we never store fingerprints
+     * for forged/garbage payloads. Returns false (don't block) when the payload
+     * can't be fingerprinted — verify() already vouched for it.
+     *
+     * The check-then-set isn't atomic, so two truly simultaneous replays of the
+     * same payload could both slip through; that single-extra-submission race is
+     * an acceptable trade for not depending on an atomic cache backend.
+     */
+    private function isReplay(string $payload): bool
+    {
+        $fingerprint = $this->challenge()->fingerprint($payload);
+        if ($fingerprint === null) {
+            return false;
+        }
+
+        $key = 'gfaltcha_seen_'.substr(hash('sha256', $fingerprint['signature']), 0, 32);
+
+        if (get_transient($key)) {
+            return true;
+        }
+
+        // Scope the record to the challenge's remaining life; once it expires
+        // the payload can't verify anyway. Fall back to an hour if unknown.
+        $ttl = $fingerprint['expiresAt'] !== null
+            ? max(MINUTE_IN_SECONDS, $fingerprint['expiresAt'] - time())
+            : HOUR_IN_SECONDS;
+
+        set_transient($key, 1, $ttl);
+
+        return false;
     }
 
     /**
