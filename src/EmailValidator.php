@@ -69,7 +69,19 @@ class EmailValidator
             return $result;
         }
 
-        if (! self::shouldBlock(self::validate($email), Settings::emailBlockModes())) {
+        $verdict = self::validate($email);
+        $block = self::shouldBlock($verdict, Settings::emailBlockModes());
+
+        Logger::record('email_validation', $block ? 'blocked' : 'allowed', [
+            'form' => $form['id'] ?? null,
+            'status' => $verdict['status'],
+            'disposable' => $verdict['disposable'],
+            'reason' => $verdict['reason'],
+            // Domain only — never the full address.
+            'domain' => self::emailDomain($email),
+        ]);
+
+        if (! $block) {
             return $result;
         }
 
@@ -118,6 +130,17 @@ class EmailValidator
      *
      * @param  array{reason?: ?string}  $result
      */
+    /**
+     * The domain part of an email, for privacy-safe logging (never the local
+     * part). Returns '' when there's no '@'.
+     */
+    public static function emailDomain(string $email): string
+    {
+        $at = strrpos($email, '@');
+
+        return $at === false ? '' : strtolower(substr($email, $at + 1));
+    }
+
     public static function isDefinitive(array $result): bool
     {
         $reason = (string) ($result['reason'] ?? '');

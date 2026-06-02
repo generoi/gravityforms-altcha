@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Genero\GravityFormsAltcha\Tests\Mocked;
 
 use Brain\Monkey;
+use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -13,6 +14,9 @@ use PHPUnit\Framework\TestCase;
  */
 abstract class MockedTestCase extends TestCase
 {
+    // Counts Brain\Monkey/Mockery expectations as PHPUnit assertions.
+    use MockeryPHPUnitIntegration;
+
     protected function setUp(): void
     {
         parent::setUp();
