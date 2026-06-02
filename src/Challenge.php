@@ -22,11 +22,26 @@ use AltchaOrg\Altcha\VerifySolutionOptions;
 class Challenge
 {
     /**
-     * Iterations the client must enumerate to find the matching derived key.
-     * 10k is the upstream example default — solves in ~50–500 ms on modern
-     * hardware, slow enough to deter scripted abuse but invisible to humans.
+     * PBKDF2 iterations per attempt the client must grind through to solve the
+     * challenge. The work scales linearly with this number, so it is the main
+     * lever for making each submission more expensive to a bot.
+     *
+     * 200k is ~20× the upstream example default of 10k. Because the widget runs
+     * `auto=onload` in a worker the moment the form renders, the proof is
+     * almost always finished long before a human submits, so the higher cost
+     * stays invisible in practice. Tune via the `genero/gravityforms_altcha/cost`
+     * filter if you support low-end devices.
      */
-    public const DEFAULT_COST = 10000;
+    public const DEFAULT_COST = 200000;
+
+    /**
+     * Bounds for an admin-configured cost. The floor keeps the proof from
+     * becoming trivial; the ceiling stops a fat-fingered value from locking
+     * real visitors out behind a multi-minute solve.
+     */
+    public const MIN_COST = 1000;
+
+    public const MAX_COST = 5000000;
 
     /**
      * Window during which a generated challenge stays usable. Long enough for
@@ -50,6 +65,15 @@ class Challenge
             cost: $this->cost,
             expiresAt: time() + $this->expiresSeconds,
         ));
+    }
+
+    /**
+     * Constrains a cost to the supported range (see {@see self::MIN_COST} /
+     * {@see self::MAX_COST}).
+     */
+    public static function clampCost(int $cost): int
+    {
+        return max(self::MIN_COST, min(self::MAX_COST, $cost));
     }
 
     /**
@@ -101,5 +125,55 @@ class Challenge
             algorithm: new Pbkdf2,
             payload: new Payload($challenge, $solution),
         ))->verified;
+    }
+
+    /**
+     * Extracts a stable, unique fingerprint from a solved payload so callers
+     * can enforce one-time use (replay protection). The challenge `signature`
+     * is an HMAC over the challenge's random salt + nonce, so it uniquely
+     * identifies a single issued challenge — two different visitors (or browser
+     * tabs) always get distinct signatures, so deduping on it only ever blocks
+     * resubmitting the very same solved challenge.
+     *
+     * `expiresAt` is returned so the caller can scope the dedup record to the
+     * challenge's remaining lifetime — past that the payload can't verify
+     * anyway, so there's nothing left to replay.
+     *
+     * @return array{signature: string, expiresAt: ?int}|null Null when the
+     *                                                        payload can't be
+     *                                                        parsed or carries
+     *                                                        no signature.
+     */
+    public function fingerprint(string $base64Payload): ?array
+    {
+        if ($base64Payload === '') {
+            return null;
+        }
+
+        $decoded = base64_decode($base64Payload, true);
+        if ($decoded === false) {
+            return null;
+        }
+
+        $payload = json_decode($decoded, true);
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        // Client-solution payloads carry the signature under `challenge`;
+        // server-signature payloads (Sentinel) carry it at the top level.
+        $signature = $payload['challenge']['signature']
+            ?? ($payload['signature'] ?? null);
+
+        if (! is_string($signature) || $signature === '') {
+            return null;
+        }
+
+        $expiresAt = $payload['challenge']['parameters']['expiresAt'] ?? null;
+
+        return [
+            'signature' => $signature,
+            'expiresAt' => is_int($expiresAt) ? $expiresAt : null,
+        ];
     }
 }

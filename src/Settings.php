@@ -68,6 +68,28 @@ class Settings extends \GFAddOn
                         'tooltip' => esc_html__('When on, ALTCHA protects every Gravity Form on the site. When off, enable it per form from the form\'s ALTCHA settings tab.', 'gravityforms-altcha'),
                         'default_value' => false,
                     ],
+                    [
+                        'name' => 'cost',
+                        'type' => 'select',
+                        'label' => esc_html__('Protection strength', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('How hard the background proof-of-work is. Stronger settings cost bots more per submission but take longer to solve on low-end devices — the work runs while the form is being filled, so it is normally invisible. Can be overridden per form.', 'gravityforms-altcha'),
+                        'default_value' => (string) Challenge::DEFAULT_COST,
+                        'choices' => self::costChoices(false),
+                    ],
+                    [
+                        'name' => 'enable_rate_limit',
+                        'type' => 'toggle',
+                        'label' => esc_html__('Rate limiting', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Flags submissions as spam (recoverable — never blocked) once an IP submits the same form more than a couple of times a minute. Applies to all Gravity Forms.', 'gravityforms-altcha'),
+                        'default_value' => false,
+                    ],
+                    [
+                        'name' => 'enable_content_filter',
+                        'type' => 'toggle',
+                        'label' => esc_html__('Content spam filtering', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Flags submissions as spam (recoverable — never blocked) when the message contains definite-spam keywords or several spam signals. Applies to all Gravity Forms.', 'gravityforms-altcha'),
+                        'default_value' => false,
+                    ],
                 ],
             ],
         ];
@@ -92,9 +114,42 @@ class Settings extends \GFAddOn
                         'tooltip' => esc_html__('Adds invisible ALTCHA spam protection to this form. Has no extra effect when "Enable for all forms" is turned on globally.', 'gravityforms-altcha'),
                         'default_value' => false,
                     ],
+                    [
+                        'name' => 'cost',
+                        'type' => 'select',
+                        'label' => esc_html__('Protection strength', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Override the protection strength for this form only, or inherit the site-wide ALTCHA setting.', 'gravityforms-altcha'),
+                        'default_value' => '',
+                        'choices' => self::costChoices(true),
+                    ],
                 ],
             ],
         ];
+    }
+
+    /**
+     * Preset protection strengths shown in the settings dropdowns. Values are
+     * proof-of-work costs (PBKDF2 iterations); labels describe the trade-off in
+     * plain terms with a rough solve time so admins don't have to reason about
+     * raw numbers. Power users can still set any exact value via the
+     * `genero/gravityforms_altcha/cost` filter.
+     *
+     * @return array<int, array{label: string, value: string}>
+     */
+    public static function costChoices(bool $includeInherit): array
+    {
+        $choices = [];
+
+        if ($includeInherit) {
+            $choices[] = ['label' => esc_html__('Inherit site-wide setting', 'gravityforms-altcha'), 'value' => ''];
+        }
+
+        return array_merge($choices, [
+            ['label' => esc_html__('Low — lightest, weakest deterrent (~1s)', 'gravityforms-altcha'), 'value' => '50000'],
+            ['label' => esc_html__('Standard — recommended balance (~4s)', 'gravityforms-altcha'), 'value' => (string) Challenge::DEFAULT_COST],
+            ['label' => esc_html__('High — stronger deterrent (~10s)', 'gravityforms-altcha'), 'value' => '500000'],
+            ['label' => esc_html__('Very high — strongest, may briefly delay submit on old devices (~20s)', 'gravityforms-altcha'), 'value' => '1000000'],
+        ]);
     }
 
     /**
@@ -115,5 +170,48 @@ class Settings extends \GFAddOn
         $formSettings = $addon->get_form_settings($form);
 
         return is_array($formSettings) && ! empty($formSettings['enabled']);
+    }
+
+    public static function rateLimitEnabled(): bool
+    {
+        return (bool) self::get_instance()->get_plugin_setting('enable_rate_limit');
+    }
+
+    public static function contentFilterEnabled(): bool
+    {
+        return (bool) self::get_instance()->get_plugin_setting('enable_content_filter');
+    }
+
+    /**
+     * Resolves the proof-of-work cost for a form: the per-form override wins,
+     * then the global setting, then the built-in default. The result is clamped
+     * to a sane range so a typo can't lock visitors out (or make the proof
+     * trivial). Pass null when no form context is available (the global/default
+     * applies).
+     */
+    public static function costForForm(?int $formId): int
+    {
+        $addon = self::get_instance();
+
+        $perForm = null;
+        if ($formId !== null && class_exists('\GFAPI')) {
+            $form = \GFAPI::get_form($formId);
+            if (is_array($form)) {
+                $formSettings = $addon->get_form_settings($form);
+                $perForm = is_array($formSettings) ? ($formSettings['cost'] ?? null) : null;
+            }
+        }
+
+        $global = $addon->get_plugin_setting('cost');
+
+        $cost = Challenge::DEFAULT_COST;
+        foreach ([$perForm, $global] as $candidate) {
+            if (is_numeric($candidate) && (int) $candidate > 0) {
+                $cost = (int) $candidate;
+                break;
+            }
+        }
+
+        return Challenge::clampCost($cost);
     }
 }
