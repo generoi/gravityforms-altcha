@@ -40,6 +40,9 @@
         "test:integration": "phpunit -c phpunit.integration.xml.dist"
     },
     "config": {
+        "platform": {
+            "php": "8.2"
+        },
         "allow-plugins": {
             "composer/installers": true
         }
