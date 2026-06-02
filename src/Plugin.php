@@ -4,7 +4,7 @@ namespace Genero\GravityFormsAltcha;
 
 class Plugin
 {
-    public const VERSION = '0.1.1';
+    public const VERSION = '0.2.0';
 
     public const SLUG = 'gravityforms-altcha';
 
@@ -39,6 +39,7 @@ class Plugin
     {
         add_action('plugins_loaded', [$this, 'loadTextdomain']);
         add_action('plugins_loaded', [$this, 'registerHooks'], 20);
+        add_action('gform_loaded', [$this, 'registerAddon'], 5);
     }
 
     public function loadTextdomain(): void
@@ -64,6 +65,21 @@ class Plugin
 
         Integration::register();
         ChallengeEndpoint::register();
+    }
+
+    /**
+     * Registers the Gravity Forms add-on that powers the global + per-form
+     * settings UI. Runs on `gform_loaded` so the add-on framework — and thus
+     * the `\GFAddOn` base class — is guaranteed to be available.
+     */
+    public function registerAddon(): void
+    {
+        if (! method_exists('\GFForms', 'include_addon_framework')) {
+            return;
+        }
+
+        \GFForms::include_addon_framework();
+        \GFAddOn::register(Settings::class);
     }
 
     /**
