@@ -59,13 +59,24 @@ class Integration
             return $result;
         }
 
+        $formId = $result['form']['id'] ?? null;
+
         $payload = isset($_POST[self::POST_FIELD]) && is_string($_POST[self::POST_FIELD])
             ? sanitize_text_field(wp_unslash($_POST[self::POST_FIELD]))
             : '';
 
-        if ($this->challenge()->verify($payload) && ! $this->isReplay($payload)) {
-            return $result;
+        if ($this->challenge()->verify($payload)) {
+            if (! $this->isReplay($payload)) {
+                Logger::record('altcha', 'pass', ['form' => $formId]);
+
+                return $result;
+            }
+            $reason = 'replay';
+        } else {
+            $reason = $payload === '' ? 'missing' : 'invalid';
         }
+
+        Logger::record('altcha', 'fail', ['form' => $formId, 'reason' => $reason]);
 
         $result['is_valid'] = false;
         $result['form']['validation_summary_message'] = $this->errorMessage();

@@ -98,6 +98,13 @@ class Settings extends \GFAddOn
                         'default_value' => false,
                     ],
                     [
+                        'name' => 'enable_logging',
+                        'type' => 'toggle',
+                        'label' => esc_html__('Debug logging', 'gravityforms-altcha'),
+                        'tooltip' => esc_html__('Logs every ALTCHA, rate-limit, content-filter and email decision (pass or fail) to the PHP error log so you can verify behaviour. No raw IPs or full email addresses are logged. Leave off in normal operation.', 'gravityforms-altcha'),
+                        'default_value' => false,
+                    ],
+                    [
                         'name' => 'email_block',
                         'type' => 'checkbox',
                         'label' => esc_html__('Reject addresses that are', 'gravityforms-altcha'),
@@ -218,6 +225,11 @@ class Settings extends \GFAddOn
     public static function emailValidationEnabled(): bool
     {
         return (bool) self::get_instance()->get_plugin_setting('enable_email_validation');
+    }
+
+    public static function loggingEnabled(): bool
+    {
+        return (bool) self::get_instance()->get_plugin_setting('enable_logging');
     }
 
     /**

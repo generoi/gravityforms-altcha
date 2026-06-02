@@ -42,15 +42,31 @@ class SpamFilter
             return (bool) $isSpam;
         }
 
-        if (Settings::rateLimitEnabled() && $this->exceedsRateLimit($form)) {
-            return true;
+        $formId = $form['id'] ?? null;
+
+        if (Settings::rateLimitEnabled()) {
+            if ($this->exceedsRateLimit($form)) {
+                Logger::record('rate_limit', 'blocked', ['form' => $formId]);
+
+                return true;
+            }
+            Logger::record('rate_limit', 'pass', ['form' => $formId]);
         }
 
         if (Settings::contentFilterEnabled()) {
             $text = $this->extractText($form, $entry);
-            if (self::contentIsSpam($text['body'], $text['identity'], self::keywords(), self::scoreThreshold())) {
+            $report = self::contentReport($text['body'], $text['identity'], self::keywords(), self::scoreThreshold());
+
+            if ($report['spam']) {
+                Logger::record('content_filter', 'spam', [
+                    'form' => $formId,
+                    'score' => $report['score'],
+                    'signals' => $report['signals'],
+                ]);
+
                 return true;
             }
+            Logger::record('content_filter', 'pass', ['form' => $formId, 'score' => $report['score']]);
         }
 
         return (bool) $isSpam;
@@ -214,47 +230,67 @@ class SpamFilter
      */
     public static function contentIsSpam(string $body, string $identity, array $keywords, int $threshold): bool
     {
+        return self::contentReport($body, $identity, $keywords, $threshold)['spam'];
+    }
+
+    /**
+     * Scores content and reports which signals fired — used both for the spam
+     * decision and for logging. A definite keyword flags on a single hit;
+     * otherwise weaker signals must accumulate to the threshold, so a lone link
+     * or foreign word never trips it.
+     *
+     * @param  array<int, string>  $keywords
+     * @return array{spam: bool, score: int, signals: array<int, string>}
+     */
+    public static function contentReport(string $body, string $identity, array $keywords, int $threshold): array
+    {
         $identity = self::normalize($identity);
         $body = self::normalize($body);
         $combined = trim($identity.' '.$body);
 
         if ($combined === '') {
-            return false;
+            return ['spam' => false, 'score' => 0, 'signals' => []];
         }
 
         // Definite-spam keywords — matched on word boundaries (unicode-aware) so
         // a keyword can't trip on a substring of an innocent word.
         foreach ($keywords as $keyword) {
             if ($keyword !== '' && self::containsWord($combined, $keyword)) {
-                return true;
+                return ['spam' => true, 'score' => $threshold, 'signals' => ['keyword']];
             }
         }
 
         $score = 0;
+        $signals = [];
 
         // Links (http(s):// and scheme-less www.), graduated: a single link is
         // innocent, a pile of them is not.
         $links = self::countLinks($combined);
         if ($links >= 5) {
             $score += 3;
+            $signals[] = 'many_links';
         } elseif ($links >= 3) {
             $score += 2;
+            $signals[] = 'links';
         }
 
         // A URL in the name field is near-certain spam — real names aren't links.
         if ($identity !== '' && self::countLinks($identity) >= 1) {
             $score += 3;
+            $signals[] = 'url_in_name';
         }
 
         if (preg_match('~\[url=|</?a\s~i', $combined)) {
-            $score += 2; // injected markup
+            $score += 2;
+            $signals[] = 'markup';
         }
 
         if (preg_match('~[\p{Cyrillic}\p{Han}\p{Hangul}]~u', $combined)) {
-            $score += 2; // wrong script for a FI/SV site
+            $score += 2;
+            $signals[] = 'wrong_script';
         }
 
-        return $score >= $threshold;
+        return ['spam' => $score >= $threshold, 'score' => $score, 'signals' => $signals];
     }
 
     /**

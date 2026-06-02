@@ -64,4 +64,10 @@ class EmailValidatorTest extends TestCase
         $this->assertTrue(EmailValidator::isDefinitive(EmailValidator::result('deliverable')));
         $this->assertTrue(EmailValidator::isDefinitive(EmailValidator::result('undeliverable', reason: 'rejected_email')));
     }
+
+    public function test_email_domain_extracted_for_logging(): void
+    {
+        $this->assertSame('gmail.com', EmailValidator::emailDomain('Foo.Bar@Gmail.com'));
+        $this->assertSame('', EmailValidator::emailDomain('no-at-sign'));
+    }
 }

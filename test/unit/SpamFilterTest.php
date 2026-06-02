@@ -91,6 +91,21 @@ class SpamFilterTest extends TestCase
         $this->assertTrue($this->isSpam('ViAgRa'));
     }
 
+    public function test_content_report_exposes_signals_for_logging(): void
+    {
+        $keyword = SpamFilter::contentReport('buy viagra', '', self::KEYWORDS, self::THRESHOLD);
+        $this->assertTrue($keyword['spam']);
+        $this->assertSame(['keyword'], $keyword['signals']);
+
+        $combined = SpamFilter::contentReport('Спасибо http://a.com http://b.com http://c.com', '', self::KEYWORDS, self::THRESHOLD);
+        $this->assertTrue($combined['spam']);
+        $this->assertContains('links', $combined['signals']);
+        $this->assertContains('wrong_script', $combined['signals']);
+
+        $name = SpamFilter::contentReport('hello', 'http://spam.example', self::KEYWORDS, self::THRESHOLD);
+        $this->assertContains('url_in_name', $name['signals']);
+    }
+
     public function test_resolve_ip_uses_remote_addr_by_default(): void
     {
         $this->assertSame('203.0.113.9', SpamFilter::resolveIp(['REMOTE_ADDR' => '203.0.113.9'], ['REMOTE_ADDR']));
