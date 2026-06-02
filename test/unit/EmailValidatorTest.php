@@ -9,31 +9,50 @@ use PHPUnit\Framework\TestCase;
 
 class EmailValidatorTest extends TestCase
 {
-    public function test_undeliverable_blocks(): void
+    private const ALL = ['undeliverable' => true, 'risky' => true, 'disposable' => true];
+
+    private const NONE = ['undeliverable' => false, 'risky' => false, 'disposable' => false];
+
+    public function test_undeliverable_blocks_only_when_that_mode_is_on(): void
     {
-        $this->assertTrue(EmailValidator::result('undeliverable')['block']);
+        $verdict = EmailValidator::result('undeliverable');
+        $this->assertTrue(EmailValidator::shouldBlock($verdict, ['undeliverable' => true]));
+        $this->assertFalse(EmailValidator::shouldBlock($verdict, self::NONE));
     }
 
-    public function test_disposable_blocks_even_when_deliverable(): void
+    public function test_risky_blocks_only_when_that_mode_is_on(): void
     {
-        $this->assertTrue(EmailValidator::result('deliverable', disposable: true)['block']);
+        $verdict = EmailValidator::result('risky');
+        $this->assertTrue(EmailValidator::shouldBlock($verdict, ['risky' => true]));
+        // Risky is off by default → real-ish addresses get through.
+        $this->assertFalse(EmailValidator::shouldBlock($verdict, ['undeliverable' => true, 'disposable' => true]));
     }
 
-    public function test_deliverable_does_not_block(): void
+    public function test_disposable_blocks_independent_of_status(): void
     {
-        $this->assertFalse(EmailValidator::result('deliverable')['block']);
+        $verdict = EmailValidator::result('deliverable', disposable: true);
+        $this->assertTrue(EmailValidator::shouldBlock($verdict, ['disposable' => true]));
+        $this->assertFalse(EmailValidator::shouldBlock($verdict, ['undeliverable' => true, 'risky' => true]));
     }
 
-    public function test_uncertain_verdicts_never_block(): void
+    public function test_deliverable_never_blocks(): void
     {
-        // Fail open: risky/unknown must let the submission through.
-        $this->assertFalse(EmailValidator::result('risky')['block']);
-        $this->assertFalse(EmailValidator::result('unknown')['block']);
+        $this->assertFalse(EmailValidator::shouldBlock(EmailValidator::result('deliverable'), self::ALL));
+    }
+
+    public function test_unknown_never_blocks(): void
+    {
+        // Fail open on uncertainty even with every mode enabled.
+        $this->assertFalse(EmailValidator::shouldBlock(EmailValidator::result('unknown'), self::ALL));
+    }
+
+    public function test_no_modes_enabled_never_blocks(): void
+    {
+        $this->assertFalse(EmailValidator::shouldBlock(EmailValidator::result('undeliverable', disposable: true), self::NONE));
     }
 
     public function test_infra_failures_are_not_definitive(): void
     {
-        // These should NOT be cached as a verdict.
         $this->assertFalse(EmailValidator::isDefinitive(EmailValidator::result('unknown', reason: 'missing_api_key')));
         $this->assertFalse(EmailValidator::isDefinitive(EmailValidator::result('unknown', reason: 'http_error:timeout')));
         $this->assertFalse(EmailValidator::isDefinitive(EmailValidator::result('unknown', reason: 'http_status:500')));
