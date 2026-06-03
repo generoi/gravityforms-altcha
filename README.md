@@ -91,29 +91,31 @@ itself is enabled.
 
 ## Logging
 
-Turn on **Debug logging** (Forms → Settings → ALTCHA) to record every decision —
-useful for verifying behaviour in staging or chasing a report. Each decision
-writes one greppable line to the PHP error log:
+Each protection decision is logged through **Gravity Forms' own logging
+framework**. Enable the Gravity Forms *Logging* add-on, then under Forms →
+Settings → **Logging** set *ALTCHA for Gravity Forms* to "Log errors only" or
+"Log all messages" — you get a per-add-on, downloadable log file. Failures
+(fail / blocked / spam) log at error level, passes at debug, so "errors only"
+surfaces just the blocks. Sample messages:
 
 ```
-[gravityforms-altcha] altcha: pass {"form":43}
-[gravityforms-altcha] altcha: fail {"form":43,"reason":"replay"}
-[gravityforms-altcha] rate_limit: blocked {"form":12}
-[gravityforms-altcha] content_filter: spam {"form":7,"score":3,"signals":["keyword"]}
-[gravityforms-altcha] email_validation: blocked {"form":7,"status":"undeliverable","disposable":false,"reason":"rejected_email","domain":"exmaple.com"}
+altcha: pass {"form":43}
+altcha: fail {"form":43,"reason":"replay"}
+rate_limit: blocked {"form":12}
+content_filter: spam {"form":7,"score":3,"signals":["keyword"]}
+email_validation: blocked {"form":7,"status":"undeliverable","disposable":false,"reason":"rejected_email","domain":"example.com"}
 ```
 
 `reason` for ALTCHA is `missing` / `invalid` / `replay`. **No PII is logged** —
 IPs only ever appear as a salted hash, and emails as the domain only.
 
-Route the records elsewhere (Sentry, Query Monitor, …) via the
-`genero/gravityforms_altcha/log` action — and optionally drop the default
-error-log line:
+Every decision also fires the `genero/gravityforms_altcha/log` action, so you
+can route records anywhere (Sentry, Query Monitor, …) independently of the GF
+logger:
 
 ```php
-remove_action('genero/gravityforms_altcha/log', ['Genero\GravityFormsAltcha\Logger', 'writeToErrorLog']);
 add_action('genero/gravityforms_altcha/log', function (string $event, string $outcome, array $context) {
-    // ship $event/$outcome/$context to your sink
+    // ship $event / $outcome / $context to your sink
 }, 10, 3);
 ```
 
@@ -218,14 +220,6 @@ score the weaker heuristics must reach (each signal contributes 2; default 3):
 ```php
 add_filter('genero/gravityforms_altcha/spam_keywords', fn (array $words) => [...$words, 'crypto']);
 add_filter('genero/gravityforms_altcha/spam_score_threshold', fn () => 4);
-```
-
-### `genero/gravityforms_altcha/logging`
-
-Force decision logging on or off regardless of the *Debug logging* setting:
-
-```php
-add_filter('genero/gravityforms_altcha/logging', fn () => defined('WP_DEBUG') && WP_DEBUG);
 ```
 
 ### `genero/gravityforms_altcha/bouncer_api_key`

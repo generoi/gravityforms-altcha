@@ -98,13 +98,6 @@ class Settings extends \GFAddOn
                         'default_value' => false,
                     ],
                     [
-                        'name' => 'enable_logging',
-                        'type' => 'toggle',
-                        'label' => esc_html__('Debug logging', 'gravityforms-altcha'),
-                        'tooltip' => esc_html__('Logs every ALTCHA, rate-limit, content-filter and email decision (pass or fail) to the PHP error log so you can verify behaviour. No raw IPs or full email addresses are logged. Leave off in normal operation.', 'gravityforms-altcha'),
-                        'default_value' => false,
-                    ],
-                    [
                         'name' => 'email_block',
                         'type' => 'checkbox',
                         'label' => esc_html__('Reject addresses that are', 'gravityforms-altcha'),
@@ -227,9 +220,23 @@ class Settings extends \GFAddOn
         return (bool) self::get_instance()->get_plugin_setting('enable_email_validation');
     }
 
-    public static function loggingEnabled(): bool
+    /**
+     * Routes a logged decision into Gravity Forms' logging framework, so it
+     * appears under Forms → Settings → Logging and respects the per-add-on level
+     * set there. Failures log at error level, everything else at debug.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public static function logToGravityForms(string $event, string $outcome, array $context = []): void
     {
-        return (bool) self::get_instance()->get_plugin_setting('enable_logging');
+        $addon = self::get_instance();
+        $message = Logger::format($event, $outcome, $context);
+
+        if (Logger::isFailure($outcome)) {
+            $addon->log_error($message);
+        } else {
+            $addon->log_debug($message);
+        }
     }
 
     /**
