@@ -4,7 +4,7 @@ namespace Genero\GravityFormsAltcha;
 
 class Plugin
 {
-    public const VERSION = '0.4.0';
+    public const VERSION = '0.5.0';
 
     public const SLUG = 'gravityforms-altcha';
 
@@ -63,9 +63,9 @@ class Plugin
             return;
         }
 
-        // Logging: drive the toggle from settings, and write the default sink.
-        add_filter('genero/gravityforms_altcha/logging', [Settings::class, 'loggingEnabled']);
-        add_action(Logger::HOOK, [Logger::class, 'writeToErrorLog'], 10, 3);
+        // Route decision logs into Gravity Forms' logging framework
+        // (Forms → Settings → Logging — per-add-on level + downloadable file).
+        add_action(Logger::HOOK, [Settings::class, 'logToGravityForms'], 10, 3);
 
         Integration::register();
         ChallengeEndpoint::register();

@@ -3,16 +3,18 @@
 namespace Genero\GravityFormsAltcha;
 
 /**
- * Lightweight, opt-in logging so each protection decision can be verified
- * through the logs. Off by default; enabled by the "Debug logging" setting (or
- * the `genero/gravityforms_altcha/logging` filter).
+ * Records each protection decision so behaviour can be verified.
  *
- * Every decision fires the `genero/gravityforms_altcha/log` action so it can be
- * routed anywhere (Sentry, Query Monitor, …); a default listener writes a
- * greppable line to the PHP error log (registered in {@see Plugin}).
+ * Every decision fires the `genero/gravityforms_altcha/log` action; the default
+ * listener (wired in {@see Plugin}) routes it into Gravity Forms' own logging
+ * framework, so it shows up under Forms → Settings → Logging with a per-add-on
+ * level (off / errors only / all) and a downloadable log file. Failures log at
+ * ERROR level, everything else at DEBUG, so "log errors only" surfaces just the
+ * blocks/failures.
  *
- * Privacy: callers pass only non-PII context — a form id, a salted IP hash, an
- * email *domain* (never the full address or raw IP), spam signal names, etc.
+ * The action is also a clean extension point for routing elsewhere (Sentry,
+ * Query Monitor, …). Privacy: callers pass only non-PII context — a form id, a
+ * salted IP hash, an email domain — never a raw IP or full address.
  */
 class Logger
 {
@@ -20,36 +22,21 @@ class Logger
 
     /**
      * @param  string  $event  e.g. altcha | rate_limit | content_filter | email_validation
-     * @param  string  $outcome  e.g. pass | fail | blocked | allowed
+     * @param  string  $outcome  e.g. pass | fail | blocked | spam | allowed
      * @param  array<string, mixed>  $context  non-PII detail
      */
     public static function record(string $event, string $outcome, array $context = []): void
     {
-        if (! self::enabled()) {
-            return;
-        }
-
         do_action(self::HOOK, $event, $outcome, $context);
     }
 
-    public static function enabled(): bool
-    {
-        /**
-         * Filters whether decisions are logged. Defaults to the "Debug logging"
-         * setting (wired in Plugin); return true/false to override.
-         */
-        return (bool) apply_filters('genero/gravityforms_altcha/logging', false);
-    }
-
     /**
-     * Default sink — a single greppable line per decision. Other listeners can
-     * be added on the same hook, or this one removed to fully take over routing.
-     *
-     * @param  array<string, mixed>  $context
+     * Whether an outcome represents a failure/block — logged at error level so
+     * it surfaces under GF's "log errors only".
      */
-    public static function writeToErrorLog(string $event, string $outcome, array $context = []): void
+    public static function isFailure(string $outcome): bool
     {
-        error_log(self::format($event, $outcome, $context));
+        return in_array($outcome, ['fail', 'blocked', 'spam'], true);
     }
 
     /**
@@ -59,6 +46,6 @@ class Logger
     {
         $suffix = $context !== [] ? ' '.json_encode($context) : '';
 
-        return sprintf('[gravityforms-altcha] %s: %s%s', $event, $outcome, $suffix);
+        return sprintf('%s: %s%s', $event, $outcome, $suffix);
     }
 }
