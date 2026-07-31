@@ -8,6 +8,13 @@ class Integration
 
     public const SCRIPT_HANDLE = 'gravityforms-altcha-widget';
 
+    /**
+     * A valid, correctly solved payload that had already been accepted once.
+     * Lives here rather than on {@see Challenge} because replay is enforced by
+     * this class, not by the verification itself.
+     */
+    public const REASON_REPLAY = 'replay';
+
     public static function register(): void
     {
         $instance = new self;
@@ -65,24 +72,54 @@ class Integration
             ? sanitize_text_field(wp_unslash($_POST[self::POST_FIELD]))
             : '';
 
-        if ($this->challenge()->verify($payload)) {
+        $challenge = $this->challenge();
+        $reason = $challenge->classify($payload);
+
+        if ($reason === Challenge::REASON_OK) {
             if (! $this->isReplay($payload)) {
                 Logger::record('altcha', 'pass', ['form' => $formId]);
 
                 return $result;
             }
-            $reason = 'replay';
-        } else {
-            $reason = $payload === '' ? 'missing' : 'invalid';
+            $reason = self::REASON_REPLAY;
         }
 
-        Logger::record('altcha', 'fail', ['form' => $formId, 'reason' => $reason]);
+        Logger::record('altcha', 'fail', $this->failureContext($formId, $reason, $payload, $challenge));
 
         $result['is_valid'] = false;
         $result['form']['validation_summary_message'] = $this->errorMessage();
         $result['form']['failed_validation_page'] = $result['form']['page_count'] ?? 1;
 
         return $result;
+    }
+
+    /**
+     * Builds the non-PII context recorded alongside a rejection.
+     *
+     * `reason` alone answers most questions, but not the one that matters most
+     * for an expired challenge: was the visitor a few seconds over, or half an
+     * hour? `expired_for` (seconds past `expiresAt`) turns "expiry is hurting
+     * us" from a hunch into a number, and shows whether the widget's renewal is
+     * doing its job in the field.
+     *
+     * @return array<string, mixed>
+     */
+    private function failureContext(mixed $formId, string $reason, string $payload, Challenge $challenge): array
+    {
+        $context = ['form' => $formId, 'reason' => $reason];
+
+        if ($reason !== Challenge::REASON_EXPIRED) {
+            return $context;
+        }
+
+        $fingerprint = $challenge->fingerprint($payload);
+        if ($fingerprint === null || $fingerprint['expiresAt'] === null) {
+            return $context;
+        }
+
+        $context['expired_for'] = max(0, time() - $fingerprint['expiresAt']);
+
+        return $context;
     }
 
     /**
