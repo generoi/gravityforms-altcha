@@ -15,11 +15,23 @@ class Integration
      */
     public const REASON_REPLAY = 'replay';
 
+    /**
+     * Form ids this request rejected, so the validation banner is only replaced
+     * for our own rejections and never for ordinary field errors.
+     *
+     * Validation and the re-render of the form happen within the same request
+     * for both standard and AJAX submissions, so per-instance state suffices.
+     *
+     * @var array<int, true>
+     */
+    private array $rejected = [];
+
     public static function register(): void
     {
         $instance = new self;
         add_filter('gform_submit_button', [$instance, 'injectWidget'], 10, 2);
         add_filter('gform_validation', [$instance, 'validate']);
+        add_filter('gform_validation_message', [$instance, 'validationMessage'], 10, 2);
         add_action('gform_enqueue_scripts', [$instance, 'enqueueScripts'], 10, 2);
     }
 
@@ -52,10 +64,12 @@ class Integration
 
     /**
      * Rejects the submission when the proof is missing, malformed, or doesn't
-     * verify. We attach the error message to the form's `validation_summary`
-     * so themes that style validation errors at the form level surface it; we
-     * deliberately don't attach it to a per-field error since there's no
-     * visible field to point at.
+     * verify.
+     *
+     * There's no visible field to hang the error on, so the message is surfaced
+     * by replacing the form-level validation banner — see
+     * {@see self::validationMessage()}. We only note the form id here; the
+     * banner is rendered later in the same request.
      *
      * @param  array{is_valid: bool, form: array<string, mixed>}  $result
      * @return array{is_valid: bool, form: array<string, mixed>}
@@ -87,10 +101,49 @@ class Integration
         Logger::record('altcha', 'fail', $this->failureContext($formId, $reason, $payload, $challenge));
 
         $result['is_valid'] = false;
-        $result['form']['validation_summary_message'] = $this->errorMessage();
-        $result['form']['failed_validation_page'] = $result['form']['page_count'] ?? 1;
+        $this->rejected[(int) $formId] = true;
 
         return $result;
+    }
+
+    /**
+     * Replaces Gravity Forms' generic validation banner when *we* rejected the
+     * submission.
+     *
+     * GF's default banner reads "There was a problem with your submission.
+     * Please review the fields below." Because an ALTCHA rejection highlights
+     * no field, that instruction sends people hunting for a broken field that
+     * doesn't exist — which is exactly how this was once misdiagnosed as a
+     * form-configuration bug. Our message names the actual recovery action:
+     * reload and try again.
+     *
+     * Only fires for forms we rejected, so genuine field errors keep GF's
+     * wording.
+     *
+     * The markup mirrors `GFFormDisplay::get_validation_errors_markup()`,
+     * including how it derives the `hide_summary` class from the form's own
+     * `validationSummary` setting — hardcoding that class would override an
+     * admin's choice, and GF appends its (here empty) error list based on the
+     * same setting.
+     *
+     * @param  string  $message  the markup GF built
+     * @param  array<string, mixed>  $form
+     */
+    public function validationMessage(string $message, array $form): string
+    {
+        $formId = isset($form['id']) ? (int) $form['id'] : 0;
+
+        if (! isset($this->rejected[$formId])) {
+            return $message;
+        }
+
+        $hideSummary = empty($form['validationSummary']) ? ' hide_summary' : '';
+
+        return sprintf(
+            '<h2 class="gform_submission_error%s"><span class="gform-icon gform-icon--circle-error"></span>%s</h2>',
+            $hideSummary,
+            esc_html($this->errorMessage())
+        );
     }
 
     /**
