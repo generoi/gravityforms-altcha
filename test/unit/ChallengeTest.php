@@ -148,6 +148,85 @@ class ChallengeTest extends TestCase
         $this->assertNull($challenge->fingerprint(base64_encode(json_encode(['no' => 'signature']))));
     }
 
+    public function test_classify_accepts_a_valid_solution(): void
+    {
+        [, $payload] = $this->solvedPayload();
+
+        $this->assertSame(Challenge::REASON_OK, (new Challenge(self::SECRET))->classify($payload));
+    }
+
+    public function test_classify_reports_missing_for_an_empty_payload(): void
+    {
+        $this->assertSame(Challenge::REASON_MISSING, (new Challenge(self::SECRET))->classify(''));
+    }
+
+    public function test_classify_reports_malformed_for_undecodable_payloads(): void
+    {
+        $challenge = new Challenge(self::SECRET);
+
+        $this->assertSame(Challenge::REASON_MALFORMED, $challenge->classify('!!!not-base64!!!'));
+        $this->assertSame(Challenge::REASON_MALFORMED, $challenge->classify(base64_encode('not json')));
+        $this->assertSame(
+            Challenge::REASON_MALFORMED,
+            $challenge->classify(base64_encode(json_encode(['challenge' => 'wrong-shape']))),
+        );
+    }
+
+    /**
+     * The distinction this whole classification exists for: a visitor who sat on
+     * a long form past the validity window must be distinguishable from an
+     * attacker posting a forged proof.
+     */
+    public function test_classify_reports_expired_separately_from_invalid(): void
+    {
+        [, $payload] = $this->solvedPayload(expiresSeconds: -10);
+
+        $this->assertSame(Challenge::REASON_EXPIRED, (new Challenge(self::SECRET))->classify($payload));
+    }
+
+    public function test_classify_reports_invalid_signature_for_a_foreign_challenge(): void
+    {
+        $altcha = new Altcha('attacker-secret');
+        $foreign = (new Challenge('attacker-secret', cost: 1000))->create();
+
+        $solution = $altcha->solveChallenge(new SolveChallengeOptions(
+            algorithm: new Pbkdf2,
+            challenge: $foreign,
+        ));
+        $this->assertNotNull($solution);
+
+        $payload = (new Payload($foreign, $solution))->toBase64();
+
+        $this->assertSame(
+            Challenge::REASON_INVALID_SIGNATURE,
+            (new Challenge(self::SECRET))->classify($payload),
+        );
+    }
+
+    public function test_classify_reports_invalid_solution_for_a_garbled_answer(): void
+    {
+        [$challenge, $payload] = $this->solvedPayload();
+
+        $arr = json_decode(base64_decode($payload, true), true);
+        $arr['solution']['derivedKey'] = str_repeat('0', strlen($arr['solution']['derivedKey']));
+
+        $this->assertSame(
+            Challenge::REASON_INVALID_SOLUTION,
+            (new Challenge(self::SECRET))->classify(base64_encode(json_encode($arr))),
+        );
+    }
+
+    public function test_verify_agrees_with_classify(): void
+    {
+        [, $valid] = $this->solvedPayload();
+        [, $expired] = $this->solvedPayload(expiresSeconds: -10);
+        $challenge = new Challenge(self::SECRET);
+
+        $this->assertTrue($challenge->verify($valid));
+        $this->assertFalse($challenge->verify($expired));
+        $this->assertFalse($challenge->verify(''));
+    }
+
     public function test_clamp_cost_constrains_to_bounds(): void
     {
         $this->assertSame(Challenge::MIN_COST, Challenge::clampCost(1));

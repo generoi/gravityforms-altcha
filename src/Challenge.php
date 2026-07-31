@@ -77,29 +77,86 @@ class Challenge
     }
 
     /**
-     * Verifies a base64-encoded payload as posted by the ALTCHA widget. Both
-     * client-solution payloads (the common case) and server-signature payloads
-     * (used by ALTCHA Sentinel / Spam Filter) are accepted — `altcha-org/altcha`
-     * tells the two apart by the presence of `verificationData`.
+     * A payload that passed every check.
+     */
+    public const REASON_OK = 'ok';
+
+    /**
+     * No `altcha` field was posted at all — typically a bot posting straight at
+     * the form handler, or the widget script never running.
+     */
+    public const REASON_MISSING = 'missing';
+
+    /**
+     * Present, but not a decodable ALTCHA payload.
+     */
+    public const REASON_MALFORMED = 'malformed';
+
+    /**
+     * Solved correctly, but the challenge's validity window had already closed
+     * by the time the form was submitted — the visitor spent longer on the form
+     * than {@see self::DEFAULT_EXPIRES_SECONDS}.
+     */
+    public const REASON_EXPIRED = 'expired';
+
+    /**
+     * Not a challenge we issued: forged, or signed with a different HMAC key
+     * (e.g. after a key rotation).
+     */
+    public const REASON_INVALID_SIGNATURE = 'invalid_signature';
+
+    /**
+     * Our challenge, but the proof-of-work answer is wrong.
+     */
+    public const REASON_INVALID_SOLUTION = 'invalid_solution';
+
+    /**
+     * Failed verification without the library attributing a specific cause.
+     */
+    public const REASON_INVALID = 'invalid';
+
+    /**
+     * Verifies a base64-encoded payload as posted by the ALTCHA widget.
      */
     public function verify(string $base64Payload): bool
     {
+        return $this->classify($base64Payload) === self::REASON_OK;
+    }
+
+    /**
+     * Verifies a payload and reports *why* it failed instead of collapsing the
+     * outcome to a bool. Telling an expired challenge apart from a forged one is
+     * the difference between "our validity window is too short for this form"
+     * and "we're being attacked" — so the reason is what makes the decision log
+     * worth keeping.
+     *
+     * Both client-solution payloads (the common case) and server-signature
+     * payloads (used by ALTCHA Sentinel / Spam Filter) are accepted —
+     * `altcha-org/altcha` tells the two apart by the presence of
+     * `verificationData`.
+     *
+     * @return string one of the REASON_* constants
+     */
+    public function classify(string $base64Payload): string
+    {
         if ($base64Payload === '') {
-            return false;
+            return self::REASON_MISSING;
         }
 
         $decoded = base64_decode($base64Payload, true);
         if ($decoded === false) {
-            return false;
+            return self::REASON_MALFORMED;
         }
 
         $payload = json_decode($decoded, true);
         if (! is_array($payload)) {
-            return false;
+            return self::REASON_MALFORMED;
         }
 
         if (isset($payload['verificationData'])) {
-            return ServerSignature::verifyServerSignature($payload, $this->hmacSecret)->verified;
+            return ServerSignature::verifyServerSignature($payload, $this->hmacSecret)->verified
+                ? self::REASON_OK
+                : self::REASON_INVALID;
         }
 
         if (! isset($payload['challenge'], $payload['solution'])
@@ -107,7 +164,7 @@ class Challenge
             || ! is_array($payload['solution'])
             || ! is_array($payload['challenge']['parameters'] ?? null)
         ) {
-            return false;
+            return self::REASON_MALFORMED;
         }
 
         $challenge = new AltchaChallenge(
@@ -121,10 +178,25 @@ class Challenge
 
         $altcha = new Altcha($this->hmacSecret);
 
-        return $altcha->verifySolution(new VerifySolutionOptions(
+        $result = $altcha->verifySolution(new VerifySolutionOptions(
             algorithm: new Pbkdf2,
             payload: new Payload($challenge, $solution),
-        ))->verified;
+        ));
+
+        if ($result->verified) {
+            return self::REASON_OK;
+        }
+        if ($result->expired) {
+            return self::REASON_EXPIRED;
+        }
+        if ($result->invalidSignature) {
+            return self::REASON_INVALID_SIGNATURE;
+        }
+        if ($result->invalidSolution) {
+            return self::REASON_INVALID_SOLUTION;
+        }
+
+        return self::REASON_INVALID;
     }
 
     /**
