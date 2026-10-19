@@ -22,6 +22,18 @@ import 'altcha';
 const BOUND_FLAG = 'gfAltchaRenew';
 
 /**
+ * How many times a failed solve is retried with a fresh challenge before the
+ * widget is left in its error state. The widget gives up on a proof after its
+ * 90s timeout ("Failed to find solution.") — on a slow machine or a throttled
+ * background tab that's just bad luck with one challenge, and the next one
+ * usually lands. The cap stops a persistent failure (challenge endpoint down)
+ * from looping forever.
+ */
+const MAX_RETRIES = 3;
+
+const retries = new WeakMap();
+
+/**
  * Fetches a brand new challenge and solves it. `verify()` re-reads the
  * `challenge` attribute (a URL), so this issues a fresh challenge rather than
  * re-solving the expired one.
@@ -61,6 +73,88 @@ function bind(widget) {
     // The widget dispatches `expired` on itself without `bubbles`, so the
     // listener has to sit on each element rather than on the document.
     widget.addEventListener('expired', () => renew(widget));
+
+    widget.addEventListener('statechange', (event) => {
+        const state = event.detail?.state;
+        if (state === 'verified') {
+            retries.delete(widget);
+        } else if (state === 'error' && canRetry(widget)) {
+            retries.set(widget, (retries.get(widget) ?? 0) + 1);
+            renew(widget);
+        }
+    });
+}
+
+/**
+ * @param {HTMLElement} widget
+ */
+function canRetry(widget) {
+    return (retries.get(widget) ?? 0) < MAX_RETRIES;
+}
+
+/**
+ * Resolves once the widget holds a solved proof, or has failed for good.
+ *
+ * `auto="onload"` only *starts* the proof on load; nothing stops the visitor
+ * submitting before it's done, and the form then posts an empty `altcha` field
+ * that the server rejects as `missing`. On a rejected AJAX submit Gravity Forms
+ * re-renders the form, the replacement widget starts from zero, and a quick
+ * retry fails the same way — so the visitor never gets through.
+ *
+ * @param {HTMLElement} widget
+ * @returns {Promise<void>}
+ */
+function whenSolved(widget) {
+    return new Promise((resolve) => {
+        const check = () => {
+            const state = widget.getState?.();
+            if (
+                state === undefined ||
+                state === 'verified' ||
+                (state === 'error' && !canRetry(widget)) ||
+                !widget.isConnected
+            ) {
+                widget.removeEventListener('statechange', check);
+                resolve();
+            } else if (state === 'expired' || state === 'unverified') {
+                renew(widget);
+            }
+        };
+        widget.addEventListener('statechange', check);
+        check();
+    });
+}
+
+/**
+ * Holds a Gravity Forms submission until the proof is ready. GF awaits async
+ * `gform/submission/pre_submission` filters before posting, and keeps its
+ * spinner up meanwhile, so the visitor just sees a slower submit instead of a
+ * rejection. If the proof fails for good the submission goes ahead and the
+ * server shows its "reload and try again" message.
+ */
+function holdSubmissions() {
+    const addAsyncFilter = window.gform?.utils?.addAsyncFilter;
+    if (!addAsyncFilter) {
+        return false;
+    }
+
+    addAsyncFilter('gform/submission/pre_submission', async (data) => {
+        const widget = data.form?.querySelector('altcha-widget');
+        if (widget) {
+            await whenSolved(widget);
+        }
+
+        return data;
+    });
+
+    return true;
+}
+
+// GF's own scripts normally load first, but don't depend on the order.
+if (!holdSubmissions()) {
+    document.addEventListener('DOMContentLoaded', holdSubmissions, {
+        once: true,
+    });
 }
 
 /**

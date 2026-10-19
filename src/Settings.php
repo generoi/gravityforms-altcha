@@ -167,6 +167,13 @@ class Settings extends \GFAddOn
      * raw numbers. Power users can still set any exact value via the
      * `genero/gravityforms_altcha/cost` filter.
      *
+     * A solve takes ~256 attempts on average (the default key prefix is one
+     * zero byte), each costing `cost` iterations. Browser WebCrypto PBKDF2 runs
+     * ~1M iterations/s per core even on a fast machine, so the times assume
+     * ~10M/s for a fast desktop and ~2.5M/s for a typical office laptop (old
+     * phones and throttled tabs are slower still). The widget gives up after
+     * 90s, so "Very high" fails outright on ordinary hardware.
+     *
      * @return array<int, array{label: string, value: string}>
      */
     public static function costChoices(bool $includeInherit): array
@@ -178,10 +185,10 @@ class Settings extends \GFAddOn
         }
 
         return array_merge($choices, [
-            ['label' => esc_html__('Low — lightest, weakest deterrent (~1s)', 'gravityforms-altcha'), 'value' => '50000'],
-            ['label' => esc_html__('Standard — recommended balance (~4s)', 'gravityforms-altcha'), 'value' => (string) Challenge::DEFAULT_COST],
-            ['label' => esc_html__('High — stronger deterrent (~10s)', 'gravityforms-altcha'), 'value' => '500000'],
-            ['label' => esc_html__('Very high — strongest, may briefly delay submit on old devices (~20s)', 'gravityforms-altcha'), 'value' => '1000000'],
+            ['label' => esc_html__('Low — lightest, weakest deterrent (~1–5s)', 'gravityforms-altcha'), 'value' => '50000'],
+            ['label' => esc_html__('Standard — recommended balance (~5–20s)', 'gravityforms-altcha'), 'value' => (string) Challenge::DEFAULT_COST],
+            ['label' => esc_html__('High — stronger deterrent, slow to submit on older devices (~15–50s)', 'gravityforms-altcha'), 'value' => '500000'],
+            ['label' => esc_html__('Very high — not recommended, often fails on ordinary laptops and phones (~25–100s+)', 'gravityforms-altcha'), 'value' => '1000000'],
         ]);
     }
 

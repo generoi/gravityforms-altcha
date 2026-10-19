@@ -54,8 +54,12 @@ override the saved settings programmatically.
 Forms → Settings → **ALTCHA** has a *Protection strength* dropdown (Low /
 Standard / High / Very high) controlling how hard the background proof-of-work
 is — stronger costs bots more per submission but takes longer to solve on
-low-end devices. Because the widget solves on page load while the form is being
-filled, even the higher settings are normally invisible. Each form's ALTCHA tab
+low-end devices. The widget solves on page load while the form is being filled,
+and a submit made before the proof is ready waits for it. The widget gives up
+after 90 seconds (then retries with a fresh challenge), which *Very high*
+regularly exceeds on ordinary laptops — prefer *Standard* unless a form is under
+real attack.
+Each form's ALTCHA tab
 can override the site-wide strength or inherit it. For an exact custom value,
 use the `genero/gravityforms_altcha/cost` filter.
 
