@@ -4,7 +4,7 @@ namespace Genero\GravityFormsAltcha;
 
 class Plugin
 {
-    public const VERSION = '0.6.1';
+    public const VERSION = '0.6.2';
 
     public const SLUG = 'gravityforms-altcha';
 
