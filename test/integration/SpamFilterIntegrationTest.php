@@ -60,6 +60,27 @@ class SpamFilterIntegrationTest extends IntegrationTestCase
         $this->assertTrue($this->isSpam($this->makeForm(), ['2' => 'cheap VIAGRA, best price']));
     }
 
+    public function test_flagged_content_records_its_reason(): void
+    {
+        $form = $this->makeForm();
+        unset(\GFFormDisplay::$submission[$form['id']]);
+
+        $this->assertTrue($this->isSpam($form, ['2' => 'cheap VIAGRA, best price']));
+        $this->assertSame(
+            ['filter' => 'ALTCHA', 'reason' => 'The content filter matched: keyword.'],
+            \GFFormDisplay::$submission[$form['id']]['spam_filter'] ?? null,
+        );
+    }
+
+    public function test_clean_submission_records_no_reason(): void
+    {
+        $form = $this->makeForm();
+        unset(\GFFormDisplay::$submission[$form['id']]);
+
+        $this->assertFalse($this->isSpam($form, ['1.3' => 'Matti', '1.6' => 'M', '2' => 'Kiitos!']));
+        $this->assertArrayNotHasKey('spam_filter', \GFFormDisplay::$submission[$form['id']] ?? []);
+    }
+
     public function test_url_in_name_field_is_flagged(): void
     {
         $this->assertTrue($this->isSpam($this->makeForm(), [
@@ -93,6 +114,10 @@ class SpamFilterIntegrationTest extends IntegrationTestCase
 
         // Default 3/hour → first three pass, the rest are flagged.
         $this->assertSame([false, false, false, true, true], $results);
+        $this->assertSame(
+            ['filter' => 'ALTCHA', 'reason' => 'The submission rate limit for this IP address was exceeded.'],
+            \GFFormDisplay::$submission[$form['id']]['spam_filter'] ?? null,
+        );
 
         unset($_SERVER['REMOTE_ADDR']);
     }

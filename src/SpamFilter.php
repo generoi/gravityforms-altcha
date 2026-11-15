@@ -47,6 +47,7 @@ class SpamFilter
         if (Settings::rateLimitEnabled()) {
             if ($this->exceedsRateLimit($form)) {
                 Logger::record('rate_limit', 'blocked', ['form' => $formId]);
+                self::recordReason($formId, __('The submission rate limit for this IP address was exceeded.', 'gravityforms-altcha'));
 
                 return true;
             }
@@ -63,6 +64,11 @@ class SpamFilter
                     'score' => $report['score'],
                     'signals' => $report['signals'],
                 ]);
+                self::recordReason($formId, sprintf(
+                    /* translators: %s: comma-separated content signals, e.g. "keyword, link" */
+                    __('The content filter matched: %s.', 'gravityforms-altcha'),
+                    implode(', ', $report['signals'])
+                ));
 
                 return true;
             }
@@ -70,6 +76,18 @@ class SpamFilter
         }
 
         return (bool) $isSpam;
+    }
+
+    /**
+     * Records why the entry was flagged, so its spam note and anything reading
+     * the submission (a monitor, an admin) show a reason instead of a bare
+     * "Spam Filter".
+     */
+    private static function recordReason(mixed $formId, string $reason): void
+    {
+        if (method_exists('GFCommon', 'set_spam_filter')) {
+            \GFCommon::set_spam_filter((int) $formId, __('ALTCHA', 'gravityforms-altcha'), $reason);
+        }
     }
 
     /**
