@@ -70,7 +70,8 @@ Settings → **ALTCHA**. Both **mark suspicious submissions as spam** (via
 `gform_entry_is_spam`) rather than rejecting them — a real visitor is never
 blocked or shown an error, and a false positive stays recoverable in the entry
 *Spam* view. They apply to every Gravity Form, independent of whether ALTCHA
-itself is enabled.
+itself is enabled. Each flag records its reason with Gravity Forms'
+`set_spam_filter()` (filter "ALTCHA"), so the entry's spam note says why.
 
 * **Rate limiting** — flags submissions once an IP exceeds a per-form
   allowance within a window (default 3 per hour). The IP is resolved independently of Gravity
@@ -110,7 +111,8 @@ content_filter: spam {"form":7,"score":3,"signals":["keyword"]}
 email_validation: blocked {"form":7,"status":"undeliverable","disposable":false,"reason":"rejected_email","domain":"example.com"}
 ```
 
-`reason` for ALTCHA is `missing` / `invalid` / `replay`. **No PII is logged** —
+`reason` for ALTCHA is `missing` / `malformed` / `expired` /
+`invalid_signature` / `invalid_solution` / `invalid` / `replay`. **No PII is logged** —
 IPs only ever appear as a salted hash, and emails as the domain only.
 
 Every decision also fires the `genero/gravityforms_altcha/log` action, so you
