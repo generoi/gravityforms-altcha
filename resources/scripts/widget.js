@@ -34,6 +34,56 @@ const MAX_RETRIES = 3;
 const retries = new WeakMap();
 
 /**
+ * When each widget's current proof expires, in ms since the epoch.
+ *
+ * The widget learns of expiry from a `setTimeout`, which a phone doesn't run
+ * while its screen is off or the tab is in the background. Back on the page,
+ * the widget still says `verified` while holding an expired proof, and the
+ * submission is rejected. Keeping the expiry lets us check the clock instead.
+ */
+const expiresAt = new WeakMap();
+
+/**
+ * Reads `expiresAt` (seconds) from a solved payload, the base64 JSON the
+ * widget posts.
+ *
+ * @param {string} payload
+ * @returns {number|null}
+ */
+function payloadExpiry(payload) {
+    try {
+        const seconds = JSON.parse(atob(payload))?.challenge?.parameters
+            ?.expiresAt;
+
+        return typeof seconds === 'number' ? seconds * 1000 : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Renews a proof that expired while its timer couldn't run.
+ *
+ * @param {HTMLElement} widget
+ * @returns {boolean} Whether a renewal was started.
+ */
+function renewIfStale(widget) {
+    const at = expiresAt.get(widget);
+    if (
+        widget.getState?.() !== 'verified' ||
+        at === undefined ||
+        Date.now() < at
+    ) {
+        return false;
+    }
+
+    expiresAt.delete(widget);
+    renew(widget);
+
+    return true;
+}
+
+/**
  * Fetches a brand new challenge and solves it. `verify()` re-reads the
  * `challenge` attribute (a URL), so this issues a fresh challenge rather than
  * re-solving the expired one.
@@ -74,8 +124,18 @@ function bind(widget) {
     // listener has to sit on each element rather than on the document.
     widget.addEventListener('expired', () => renew(widget));
 
+    widget.addEventListener('verified', (event) => {
+        const at = payloadExpiry(event.detail?.payload ?? '');
+        if (at !== null) {
+            expiresAt.set(widget, at);
+        }
+    });
+
     widget.addEventListener('statechange', (event) => {
         const state = event.detail?.state;
+        if (state !== 'verified') {
+            expiresAt.delete(widget);
+        }
         if (state === 'verified') {
             retries.delete(widget);
         } else if (state === 'error' && canRetry(widget)) {
@@ -107,6 +167,10 @@ function canRetry(widget) {
 function whenSolved(widget) {
     return new Promise((resolve) => {
         const check = () => {
+            // Still `verified` until the renewal starts; wait for its states.
+            if (renewIfStale(widget)) {
+                return;
+            }
             const state = widget.getState?.();
             if (
                 state === undefined ||
@@ -165,6 +229,13 @@ function bindAll(root) {
 }
 
 bindAll(document);
+
+// Back on screen, start a fresh proof now rather than when the visitor submits.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        document.querySelectorAll('altcha-widget').forEach(renewIfStale);
+    }
+});
 
 // Gravity Forms re-renders the form markup after an AJAX submission or a page
 // change in a multi-page form, which replaces the widget with a fresh element.
