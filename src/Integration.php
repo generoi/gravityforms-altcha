@@ -98,7 +98,9 @@ class Integration
             $reason = self::REASON_REPLAY;
         }
 
-        Logger::record('altcha', 'fail', $this->failureContext($formId, $reason, $payload, $challenge));
+        $context = $this->failureContext($formId, $reason, $payload, $challenge);
+        Logger::record('altcha', 'fail', $context);
+        $this->reportToMonitoring($context);
 
         $result['is_valid'] = false;
         $this->rejected[(int) $formId] = true;
@@ -173,6 +175,32 @@ class Integration
         $context['expired_for'] = max(0, time() - $fingerprint['expiresAt']);
 
         return $context;
+    }
+
+    /**
+     * Tells gds-monitoring (when installed) about rejections that take a real,
+     * signed challenge: it expired before the visitor submitted, or its
+     * signature no longer matches (the HMAC key changed). Those are real
+     * people being turned away, and nothing is saved for a refused
+     * submission. A missing, malformed or replayed proof is what bots send,
+     * so it isn't reported. Every one is reported (no throttle), since each
+     * is a person.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function reportToMonitoring(array $context): void
+    {
+        $reason = (string) $context['reason'];
+        if (! in_array($reason, [Challenge::REASON_EXPIRED, Challenge::REASON_INVALID_SIGNATURE], true)) {
+            return;
+        }
+
+        $message = sprintf('rejected form %d (%s)', (int) $context['form'], $reason);
+        if (isset($context['expired_for'])) {
+            $message .= sprintf(': %d s past expiry', (int) $context['expired_for']);
+        }
+
+        do_action('gds/monitoring/report', 'altcha', $message, false);
     }
 
     /**

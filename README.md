@@ -125,6 +125,13 @@ add_action('genero/gravityforms_altcha/log', function (string $event, string $ou
 }, 10, 3);
 ```
 
+With [gds-monitoring](https://github.com/generoi/gds-monitoring) installed, an
+`expired` or `invalid_signature` rejection is also reported to it, every one,
+since both take a real, signed challenge and so point to a person turned away
+(`report altcha blog 2: rejected form 4 (expired): 125 s past expiry`). Bots'
+reasons (missing, malformed, replayed proofs) aren't. Without it the call does
+nothing.
+
 ## How it works
 
 1. **Form render** — when enabled for the form, the plugin injects a hidden
