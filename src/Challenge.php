@@ -207,9 +207,8 @@ class Challenge
      * tabs) always get distinct signatures, so deduping on it only ever blocks
      * resubmitting the very same solved challenge.
      *
-     * `expiresAt` is returned so the caller can scope the dedup record to the
-     * challenge's remaining lifetime — past that the payload can't verify
-     * anyway, so there's nothing left to replay.
+     * `expiresAt` is returned so the caller can say how long an expired
+     * payload was past its expiry.
      *
      * @return array{signature: string, expiresAt: ?int}|null Null when the
      *                                                        payload can't be

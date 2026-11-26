@@ -16,6 +16,14 @@ class Integration
     public const REASON_REPLAY = 'replay';
 
     /**
+     * How long an accepted proof is remembered. Well past its expiry, so a
+     * browser that re-sends an accepted submission hours later (an in-app
+     * browser restoring a tab) is told apart from a visitor whose proof ran
+     * out before they got through.
+     */
+    public const SEEN_FOR = 7 * DAY_IN_SECONDS;
+
+    /**
      * Form ids this request rejected, so the validation banner is only replaced
      * for our own rejections and never for ordinary field errors.
      *
@@ -95,6 +103,10 @@ class Integration
 
                 return $result;
             }
+            $reason = self::REASON_REPLAY;
+        } elseif ($reason === Challenge::REASON_EXPIRED && $this->wasAccepted($payload)) {
+            // An accepted submission sent again after its proof expired: its
+            // entry exists, so nobody was turned away.
             $reason = self::REASON_REPLAY;
         }
 
@@ -207,8 +219,8 @@ class Integration
      * One-time-use enforcement. A signed challenge stays verifiable until it
      * expires, so without this a bot could solve the proof once and replay the
      * same payload across many submissions, paying the proof-of-work cost only
-     * once. We remember each challenge's unique signature for the rest of its
-     * lifetime and reject any payload we've already accepted.
+     * once. We remember each challenge's unique signature for
+     * {@see self::SEEN_FOR} and reject any payload we've already accepted.
      *
      * Only called after a successful verify(), so we never store fingerprints
      * for forged/garbage payloads. Returns false (don't block) when the payload
@@ -220,26 +232,38 @@ class Integration
      */
     private function isReplay(string $payload): bool
     {
-        $fingerprint = $this->challenge()->fingerprint($payload);
-        if ($fingerprint === null) {
+        $key = $this->seenKey($payload);
+        if ($key === null) {
             return false;
         }
-
-        $key = 'gfaltcha_seen_'.substr(hash('sha256', $fingerprint['signature']), 0, 32);
 
         if (get_transient($key)) {
             return true;
         }
 
-        // Scope the record to the challenge's remaining life; once it expires
-        // the payload can't verify anyway. Fall back to an hour if unknown.
-        $ttl = $fingerprint['expiresAt'] !== null
-            ? max(MINUTE_IN_SECONDS, $fingerprint['expiresAt'] - time())
-            : HOUR_IN_SECONDS;
-
-        set_transient($key, 1, $ttl);
+        set_transient($key, 1, self::SEEN_FOR);
 
         return false;
+    }
+
+    /**
+     * Whether a payload was accepted before, without recording it. Asked for an
+     * expired proof, which can't verify any more.
+     */
+    private function wasAccepted(string $payload): bool
+    {
+        $key = $this->seenKey($payload);
+
+        return $key !== null && (bool) get_transient($key);
+    }
+
+    private function seenKey(string $payload): ?string
+    {
+        $fingerprint = $this->challenge()->fingerprint($payload);
+
+        return $fingerprint === null
+            ? null
+            : 'gfaltcha_seen_'.substr(hash('sha256', $fingerprint['signature']), 0, 32);
     }
 
     /**
