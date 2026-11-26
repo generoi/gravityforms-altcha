@@ -129,8 +129,10 @@ With [gds-monitoring](https://github.com/generoi/gds-monitoring) installed, an
 `expired` or `invalid_signature` rejection is also reported to it, every one,
 since both take a real, signed challenge and so point to a person turned away
 (`report altcha blog 2: rejected form 4 (expired): 125 s past expiry`). Bots'
-reasons (missing, malformed, replayed proofs) aren't. Without it the call does
-nothing.
+reasons (missing, malformed, replayed proofs) aren't, and neither is an expired
+proof that was accepted before: a browser re-sending a submission that already
+went through, such as an in-app browser restoring a tab hours later. Without it
+the call does nothing.
 
 ## How it works
 
@@ -145,9 +147,10 @@ nothing.
    reconstructs the challenge, and runs `altcha-org/altcha::verifySolution()`.
    On failure the submission is rejected with a generic error message.
 5. **Replay protection** — each challenge is single-use. A solved payload's
-   unique signature is remembered for the rest of its lifetime, so the same
-   proof can't be replayed across many submissions — a bot must solve a fresh
-   challenge every time rather than paying the cost once.
+   unique signature is remembered for a week, so the same proof can't be
+   replayed across many submissions — a bot must solve a fresh challenge every
+   time rather than paying the cost once — and a resubmission after expiry is
+   recognised as a replay, not a visitor turned away.
 
 Day-to-day configuration lives in the admin UI (see [Settings](#settings)); the
 filters below cover advanced overrides.
